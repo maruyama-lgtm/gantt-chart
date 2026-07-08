@@ -388,12 +388,47 @@ textarea:focus {
   font-size: 16px;
 }
 
+.customer-title-line {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.customer-title-line strong {
+  margin-bottom: 0;
+}
+
+.customer-work {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .customer-main span,
 .customer-meta span {
   display: block;
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
+}
+
+.customer-main .customer-title-line {
+  display: flex;
+  align-items: center;
+}
+
+.customer-main .customer-title-line strong {
+  display: inline;
+  margin-bottom: 0;
+  color: var(--ink);
+}
+
+.customer-main .customer-work {
+  display: inline;
+  color: var(--muted);
+  font-weight: 800;
 }
 
 .customer-progress {
@@ -563,6 +598,43 @@ select:focus {
   font-size: 18px;
 }
 
+.master-panel .section-title {
+  margin-bottom: 10px;
+}
+
+.accordion-toggle {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 8px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  padding: 0;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.accordion-toggle::before {
+  content: "▾";
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 50%;
+  background: #e7edf2;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.accordion-toggle[aria-expanded="false"]::before {
+  content: "▸";
+}
+
+.accordion-body.collapsed {
+  display: none;
+}
+
 .master-table {
   overflow: hidden;
   border: 1px solid var(--line);
@@ -701,7 +773,7 @@ select:focus {
 
 .gantt-chart {
   --task-name-width: 260px;
-  --task-meta-width: 540px;
+  --task-meta-width: 320px;
   --day-width: 40px;
   min-width: calc(var(--task-name-width) + var(--task-meta-width) + var(--day-width) * 42);
 }
@@ -797,7 +869,7 @@ select:focus {
 
 .task-controls {
   display: grid;
-  grid-template-columns: 96px 112px 112px 58px 64px 32px;
+  grid-template-columns: 112px 92px 64px 32px;
   gap: 8px;
   align-items: center;
 }
@@ -865,6 +937,16 @@ select:focus {
   border-radius: 999px;
   color: var(--ink);
   box-shadow: 0 7px 16px rgba(28, 38, 51, 0.12);
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+}
+
+.task-bar.dragging {
+  cursor: grabbing;
+  opacity: 0.88;
+  z-index: 3;
 }
 
 .task-bar-fill {
@@ -887,6 +969,25 @@ select:focus {
 .task-bar.is-filled span {
   color: #fff;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+}
+
+.bar-resize {
+  position: absolute;
+  top: 0;
+  z-index: 2;
+  width: 12px;
+  height: 100%;
+  border-radius: inherit;
+  background: rgba(255, 255, 255, 0.3);
+  cursor: ew-resize;
+}
+
+.bar-resize.left {
+  left: 0;
+}
+
+.bar-resize.right {
+  right: 0;
 }
 
 .color-dialog {

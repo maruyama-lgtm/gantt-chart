@@ -6,7 +6,13 @@ const MASTER_EMAIL = "maruyama@sooon-web.com";
 const GOOGLE_CLIENT_ID = "913052066974-1sdbg5mrjl009h7vnnujcsgpgjinqae2.apps.googleusercontent.com";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const VIEW_DAYS = 42;
+const DAY_WIDTH = 40;
 const holidayCache = new Map();
+const PROGRESS_STATES = [
+  { value: 0, label: "未着手" },
+  { value: 50, label: "着手中" },
+  { value: 100, label: "完了" }
+];
 const PALETTE = [
   "#206b73",
   "#d9902f",
@@ -205,9 +211,9 @@ function createProject(options = {}) {
   ];
   const taskDefaults = [
     ["ヒアリング・要件整理", members[0].id, roles[0].id, 0, 4, 100],
-    ["サイト構成・ワイヤーフレーム", members[0].id, roles[0].id, 3, 10, 70],
-    ["原稿整理・素材回収", members[3].id, roles[3].id, 5, 16, 35],
-    ["トップページデザイン", members[1].id, roles[1].id, 10, 18, 20],
+    ["サイト構成・ワイヤーフレーム", members[0].id, roles[0].id, 3, 10, 50],
+    ["原稿整理・素材回収", members[3].id, roles[3].id, 5, 16, 50],
+    ["トップページデザイン", members[1].id, roles[1].id, 10, 18, 50],
     ["下層ページデザイン", members[1].id, roles[1].id, 17, 25, 0],
     ["HTML/CSS実装", members[2].id, roles[2].id, 22, 31, 0],
     ["CMS設定・フォーム調整", members[2].id, roles[2].id, 29, 35, 0],
@@ -222,7 +228,7 @@ function createProject(options = {}) {
     note: "",
     start: formatDate(addDays(parseDate(start), startOffset)),
     end: formatDate(addDays(parseDate(start), endOffset)),
-    progress: progressOverride === null ? progress : progressOverride
+    progress: progressStateValue(progressOverride === null ? progress : progressOverride)
   }));
   const end = tasks[tasks.length - 1].end;
 
@@ -304,7 +310,7 @@ function normalizeProject(input) {
       : fallback.members.find((member) => member.id === item.assigneeId)?.roleId || fallback.roles[0]?.id || "",
     start: item.start || fallback.project.start,
     end: item.end || item.start || fallback.project.start,
-    progress: clamp(Number(item.progress) || 0, 0, 100),
+    progress: progressStateValue(item.progress),
     note: String(item.note || "")
   }));
   if (!fallback.members.some((member) => member.id === fallback.ballOwnerId)) {
@@ -547,6 +553,10 @@ function bindEvents() {
     });
   });
 
+  document.querySelectorAll(".accordion-toggle").forEach((button) => {
+    button.addEventListener("click", () => toggleAccordion(button));
+  });
+
   refs.projectStatus.addEventListener("change", () => {
     currentProject().status = refs.projectStatus.value;
     saveState(true);
@@ -698,12 +708,17 @@ function renderDashboard() {
 
   refs.emptyCustomers.classList.toggle("hidden", projects.length > 0);
   projects.forEach((project) => {
+    const ballOwner = projectMember(project, project.ballOwnerId);
+    const workNote = String(project.currentWorkNote || "").trim();
     const button = document.createElement("button");
     button.className = "customer-card";
     button.type = "button";
     button.innerHTML = `
       <span class="customer-main">
-        <strong>${escapeHtml(project.project.client || "未設定の顧客")}</strong>
+        <span class="customer-title-line">
+          <strong>${escapeHtml(project.project.client || "未設定の顧客")}</strong>
+          <span class="customer-work">ボール: ${escapeHtml(ballOwner?.name || "-")} / 作業内容: ${escapeHtml(workNote || "-")}</span>
+        </span>
         <span>${escapeHtml(project.project.name || "未設定の工程表")}</span>
       </span>
       <span class="customer-meta">
@@ -732,6 +747,14 @@ function openSettings() {
   }
   appState.currentView = "settings";
   render();
+}
+
+function toggleAccordion(button) {
+  const target = document.getElementById(button.dataset.target);
+  if (!target) return;
+  const expanded = button.getAttribute("aria-expanded") !== "false";
+  button.setAttribute("aria-expanded", String(!expanded));
+  target.classList.toggle("collapsed", expanded);
 }
 
 function renderSettings() {
@@ -901,7 +924,7 @@ function renderGantt() {
 
   const header = document.createElement("div");
   header.className = "gantt-header";
-  header.innerHTML = `<div class="corner">工程名</div><div class="meta-head">担当 / 期間 / 進捗</div>`;
+  header.innerHTML = `<div class="corner">工程名</div><div class="meta-head">担当 / 進捗</div>`;
   days.forEach((day) => {
     const cell = document.createElement("div");
     cell.className = `day-head ${dayClass(day)}`;
@@ -918,9 +941,7 @@ function renderGantt() {
       <div class="task-meta">
         <div class="task-controls">
           <select aria-label="担当者">${memberOptions(task.assigneeId)}</select>
-          <input type="date" value="${escapeAttr(task.start)}" aria-label="開始日" />
-          <input type="date" value="${escapeAttr(task.end)}" aria-label="終了日" />
-          <input type="number" min="0" max="100" value="${Number(task.progress) || 0}" aria-label="進捗" />
+          <select aria-label="進捗">${progressOptions(task.progress)}</select>
           ${mailButtonHtml(task)}
           <button class="mini-danger" type="button" aria-label="工程を削除">x</button>
         </div>
@@ -942,14 +963,20 @@ function renderGantt() {
       bar.className = `task-bar ${progress >= 45 ? "is-filled" : ""}`;
       bar.style.gridColumn = `${position.start + 3} / ${position.end + 3}`;
       bar.style.background = tintColor(role.color, 0.82);
-      bar.innerHTML = `<div class="task-bar-fill" style="width:${progress}%; background:${escapeAttr(role.color)}"></div><span>${escapeHtml(task.name)} ${progress}%</span>`;
+      bar.innerHTML = `
+        <button class="bar-resize left" type="button" aria-label="開始日を調整"></button>
+        <div class="task-bar-fill" style="width:${progress}%; background:${escapeAttr(role.color)}"></div>
+        <span>${escapeHtml(task.name)} ${progressLabel(progress)}</span>
+        <button class="bar-resize right" type="button" aria-label="完了予定日を調整"></button>
+      `;
+      bindTaskBarDrag(bar, task);
       layer.append(bar);
     }
     row.append(layer);
 
     const taskInput = row.querySelector(".task-title-input");
     const controls = row.querySelector(".task-controls");
-    const [memberSelect, startInput, endInput, progressInput, mailButton, deleteButton] = controls.children;
+    const [memberSelect, progressSelect, mailButton, deleteButton] = controls.children;
     taskInput.addEventListener("input", () => {
       task.name = taskInput.value;
       updateTaskBar(row, task);
@@ -965,36 +992,20 @@ function renderGantt() {
       if (member) task.roleId = member.roleId;
       renderDetail();
     });
-    startInput.addEventListener("change", () => {
-      task.start = startInput.value;
-      if (dateDiff(task.start, task.end) < 0) task.end = task.start;
-      reconcileProjectDates();
-      renderDetail();
-    });
-    endInput.addEventListener("change", () => {
-      task.end = endInput.value;
-      if (dateDiff(task.start, task.end) < 0) task.start = task.end;
-      reconcileProjectDates();
-      renderDetail();
-    });
-    progressInput.addEventListener("input", () => {
+    progressSelect.addEventListener("change", () => {
       const previousProgress = Number(task.progress) || 0;
-      task.progress = clamp(Number(progressInput.value) || 0, 0, 100);
+      task.progress = clamp(Number(progressSelect.value) || 0, 0, 100);
       if (previousProgress < 100 && task.progress >= 100) {
         showToast("この工程の進捗報告メールを作成できます");
       }
-      updateTaskBar(row, task);
       renderSummary();
-      saveState();
-    });
-    progressInput.addEventListener("change", () => {
       renderGantt();
       saveState();
     });
     mailButton.addEventListener("click", (event) => {
       if (!isTaskReportReady(currentProject(), task)) {
         event.preventDefault();
-        showToast("この工程の100%完了と顧客メールが必要です");
+        showToast("この工程の完了と顧客メールが必要です");
       }
     });
     deleteButton.addEventListener("click", () => removeTask(task.id));
@@ -1011,7 +1022,60 @@ function updateTaskBar(row, task) {
   const label = bar.querySelector("span");
   bar.classList.toggle("is-filled", progress >= 45);
   if (fill) fill.style.width = `${progress}%`;
-  if (label) label.textContent = `${task.name} ${progress}%`;
+  if (label) label.textContent = `${task.name} ${progressLabel(progress)}`;
+}
+
+function bindTaskBarDrag(bar, task) {
+  bar.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const mode = event.target.closest(".bar-resize.left")
+      ? "resize-start"
+      : event.target.closest(".bar-resize.right")
+        ? "resize-end"
+        : "move";
+    const startX = event.clientX;
+    const originalStart = task.start;
+    const originalEnd = task.end;
+    bar.setPointerCapture(event.pointerId);
+    bar.classList.add("dragging");
+
+    const onPointerMove = (moveEvent) => {
+      const delta = Math.round((moveEvent.clientX - startX) / DAY_WIDTH);
+      bar.style.transform = `translateX(${delta * DAY_WIDTH}px)`;
+    };
+
+    const onPointerUp = (upEvent) => {
+      const delta = Math.round((upEvent.clientX - startX) / DAY_WIDTH);
+      bar.classList.remove("dragging");
+      bar.style.transform = "";
+      if (bar.hasPointerCapture(upEvent.pointerId)) {
+        bar.releasePointerCapture(upEvent.pointerId);
+      }
+      bar.removeEventListener("pointermove", onPointerMove);
+      bar.removeEventListener("pointerup", onPointerUp);
+      bar.removeEventListener("pointercancel", onPointerUp);
+      if (delta === 0) return;
+
+      if (mode === "move") {
+        task.start = formatDate(addDays(parseDate(originalStart), delta));
+        task.end = formatDate(addDays(parseDate(originalEnd), delta));
+      } else if (mode === "resize-start") {
+        const nextStart = formatDate(addDays(parseDate(originalStart), delta));
+        task.start = dateDiff(nextStart, originalEnd) >= 0 ? nextStart : originalEnd;
+      } else {
+        const nextEnd = formatDate(addDays(parseDate(originalEnd), delta));
+        task.end = dateDiff(originalStart, nextEnd) >= 0 ? nextEnd : originalStart;
+      }
+
+      reconcileProjectDates();
+      renderDetail();
+    };
+
+    bar.addEventListener("pointermove", onPointerMove);
+    bar.addEventListener("pointerup", onPointerUp);
+    bar.addEventListener("pointercancel", onPointerUp);
+  });
 }
 
 function dayClass(day) {
@@ -1139,12 +1203,31 @@ function memberOptions(selectedId) {
     .join("");
 }
 
+function progressOptions(progress) {
+  const selectedValue = progressStateValue(progress);
+  return PROGRESS_STATES
+    .map((state) => `<option value="${state.value}" ${state.value === selectedValue ? "selected" : ""}>${state.label}</option>`)
+    .join("");
+}
+
+function progressStateValue(progress) {
+  const value = Number(progress) || 0;
+  if (value >= 100) return 100;
+  if (value > 0) return 50;
+  return 0;
+}
+
+function progressLabel(progress) {
+  const value = progressStateValue(progress);
+  return PROGRESS_STATES.find((state) => state.value === value)?.label || "未着手";
+}
+
 function mailButtonHtml(task) {
   const project = currentProject();
   const ready = isTaskReportReady(project, task);
   const href = ready ? buildGmailComposeUrl(task) : "#";
   const className = ready ? "mail-button ready" : "mail-button disabled";
-  const title = ready ? "Gmailで進捗報告メールを作成" : "この工程の100%完了と顧客メールが必要です";
+  const title = ready ? "Gmailで進捗報告メールを作成" : "この工程の完了と顧客メールが必要です";
   return `<a class="${className}" href="${escapeAttr(href)}" target="_blank" rel="noopener" aria-label="${escapeAttr(title)}">${ready ? "送信" : "メール"}</a>`;
 }
 
@@ -1160,14 +1243,14 @@ function updateProjectReportButton(project) {
   const ready = completedReportableTasks(project).length > 0;
   refs.projectReportButton.disabled = !ready;
   refs.projectReportHint.textContent = ready
-    ? `100%の工程をログイン中のGmail（${appState.session?.email || "Googleアカウント"}）で報告できます。`
-    : "100%の工程があり、顧客メールが入力されると送信できます。";
+    ? `完了した工程をログイン中のGmail（${appState.session?.email || "Googleアカウント"}）で報告できます。`
+    : "完了した工程があり、顧客メールが入力されると送信できます。";
 }
 
 function openProjectReportGmail() {
   const project = currentProject();
   if (!completedReportableTasks(project).length) {
-    showToast("100%の工程と顧客メールが必要です");
+    showToast("完了した工程と顧客メールが必要です");
     return;
   }
   window.open(buildGmailComposeUrl(), "_blank", "noopener");
@@ -1209,6 +1292,10 @@ function getRole(id) {
 
 function getMember(id) {
   return currentProject().members.find((member) => member.id === id);
+}
+
+function projectMember(project, id) {
+  return project.members.find((member) => member.id === id) || project.members[0] || null;
 }
 
 function createNewProject() {
@@ -1486,7 +1573,7 @@ function exportImage() {
       ctx.fill();
       ctx.fillStyle = progress >= 45 ? "#ffffff" : "#1c2633";
       ctx.font = "700 10px sans-serif";
-      ctx.fillText(`${progress}%`, x + 8, y + 23);
+      ctx.fillText(progressLabel(progress), x + 8, y + 23);
     }
   });
 

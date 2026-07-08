@@ -112,7 +112,7 @@
         <section class="detail-strip" aria-label="顧客詳細の状態">
           <div class="report-actions">
             <button id="projectReportButton" class="primary" type="button" disabled>完了工程をまとめて報告</button>
-            <span id="projectReportHint">100%の工程があると送信できます。</span>
+            <span id="projectReportHint">完了した工程があると送信できます。</span>
           </div>
           <label>
             <span>案件ステータス</span>
@@ -171,28 +171,32 @@
         </section>
 
         <section class="masters">
-          <article class="panel">
+          <article class="panel master-panel">
             <div class="section-title">
-              <h2>担当者マスター</h2>
+              <button class="accordion-toggle" type="button" data-target="memberMasterBody" aria-expanded="true">担当者マスター</button>
               <button id="addMemberButton" class="icon-button" type="button" aria-label="担当者を追加">+</button>
             </div>
-            <div class="master-table member-table">
-              <div class="table-head">
-                <span>名前</span>
-                <span>役割</span>
-                <span>プレビュー</span>
-                <span>操作</span>
+            <div id="memberMasterBody" class="accordion-body">
+              <div class="master-table member-table">
+                <div class="table-head">
+                  <span>名前</span>
+                  <span>役割</span>
+                  <span>プレビュー</span>
+                  <span>操作</span>
+                </div>
+                <div id="memberRows"></div>
               </div>
-              <div id="memberRows"></div>
             </div>
           </article>
 
-          <article class="panel">
+          <article class="panel master-panel">
             <div class="section-title">
-              <h2>役割マスター</h2>
+              <button class="accordion-toggle" type="button" data-target="roleMasterBody" aria-expanded="true">役割マスター</button>
               <button id="addRoleButton" class="secondary" type="button">+ 追加</button>
             </div>
-            <div id="roleRows" class="role-list"></div>
+            <div id="roleMasterBody" class="accordion-body">
+              <div id="roleRows" class="role-list"></div>
+            </div>
           </article>
         </section>
 
