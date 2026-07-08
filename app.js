@@ -553,13 +553,28 @@ function bindEvents() {
     renderDetailHeader();
   });
 
-  ["projectName", "clientName", "customerEmail", "ownerName", "startDate", "endDate"].forEach((key) => {
+  ["projectName", "clientName", "customerEmail", "ownerName"].forEach((key) => {
     refs[key].addEventListener("input", () => {
       const map = {
         projectName: "name",
         clientName: "client",
         customerEmail: "customerEmail",
-        ownerName: "owner",
+        ownerName: "owner"
+      };
+      currentProject().project[map[key]] = refs[key].value;
+      renderDetailHeader();
+      saveState();
+    });
+  });
+
+  refs.customerEmail.addEventListener("change", () => {
+    renderSummary();
+    renderGantt();
+  });
+
+  ["startDate", "endDate"].forEach((key) => {
+    refs[key].addEventListener("change", () => {
+      const map = {
         startDate: "start",
         endDate: "end"
       };
@@ -825,6 +840,9 @@ function renderMembers() {
     const [nameInput, roleSelect, , deleteButton] = row.children;
     nameInput.addEventListener("input", () => {
       member.name = nameInput.value;
+      saveState();
+    });
+    nameInput.addEventListener("change", () => {
       renderBallOwner();
       renderGantt();
       saveState();
@@ -863,6 +881,9 @@ function renderRoles() {
     colorButton.addEventListener("click", () => openColorDialog(role.id));
     nameInput.addEventListener("input", () => {
       role.name = nameInput.value;
+      saveState();
+    });
+    nameInput.addEventListener("change", () => {
       renderMembers();
       renderGantt();
       saveState();
@@ -931,6 +952,10 @@ function renderGantt() {
     const [memberSelect, startInput, endInput, progressInput, mailButton, deleteButton] = controls.children;
     taskInput.addEventListener("input", () => {
       task.name = taskInput.value;
+      updateTaskBar(row, task);
+      saveState();
+    });
+    taskInput.addEventListener("change", () => {
       renderGantt();
       saveState();
     });
@@ -958,7 +983,11 @@ function renderGantt() {
       if (previousProgress < 100 && task.progress >= 100) {
         showToast("この工程の進捗報告メールを作成できます");
       }
+      updateTaskBar(row, task);
       renderSummary();
+      saveState();
+    });
+    progressInput.addEventListener("change", () => {
       renderGantt();
       saveState();
     });
@@ -972,6 +1001,17 @@ function renderGantt() {
 
     refs.ganttChart.append(row);
   });
+}
+
+function updateTaskBar(row, task) {
+  const bar = row.querySelector(".task-bar");
+  if (!bar) return;
+  const progress = Number(task.progress) || 0;
+  const fill = bar.querySelector(".task-bar-fill");
+  const label = bar.querySelector("span");
+  bar.classList.toggle("is-filled", progress >= 45);
+  if (fill) fill.style.width = `${progress}%`;
+  if (label) label.textContent = `${task.name} ${progress}%`;
 }
 
 function dayClass(day) {
