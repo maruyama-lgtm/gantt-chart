@@ -273,6 +273,7 @@ function normalizeProject(input) {
     tasks: Array.isArray(input.tasks) ? input.tasks : [],
     ballOwnerId: input.ballOwnerId || "",
     currentWorkNote: String(input.currentWorkNote || input.ballOwnerNote || ""),
+    pinned: Boolean(input.pinned),
     viewStart: input.viewStart || input.project?.start || todayString(),
     createdAt: input.createdAt || new Date().toISOString(),
     updatedAt: input.updatedAt || new Date().toISOString()
@@ -557,6 +558,8 @@ function bindEvents() {
     button.addEventListener("click", () => toggleAccordion(button));
   });
 
+  document.addEventListener("click", () => closeCustomerMenus());
+
   refs.projectStatus.addEventListener("change", () => {
     currentProject().status = refs.projectStatus.value;
     saveState(true);
@@ -704,15 +707,16 @@ function renderDashboard() {
   refs.customerList.innerHTML = "";
   const projects = appState.projects
     .filter((project) => project.status === appState.selectedStatus)
-    .sort((a, b) => String(a.project.start).localeCompare(String(b.project.start)));
+    .sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) || String(a.project.start).localeCompare(String(b.project.start)));
 
   refs.emptyCustomers.classList.toggle("hidden", projects.length > 0);
   projects.forEach((project) => {
     const ballOwner = projectMember(project, project.ballOwnerId);
     const workNote = String(project.currentWorkNote || "").trim();
-    const button = document.createElement("button");
+    const button = document.createElement("div");
     button.className = "customer-card";
-    button.type = "button";
+    button.setAttribute("role", "button");
+    button.setAttribute("tabindex", "0");
     button.innerHTML = `
       <span class="customer-main">
         <span class="customer-title-line">
@@ -729,14 +733,45 @@ function renderDashboard() {
         <span>進捗</span>
         <strong>${averageProgress(project)}%</strong>
       </span>
-      <span class="mini-danger" role="button" tabindex="0" aria-label="顧客を削除">x</span>
+      <div class="customer-menu-wrap">
+        <button class="customer-menu-button" type="button" aria-label="顧客操作" aria-expanded="false">...</button>
+        <div class="customer-menu hidden">
+          <button type="button" data-action="delete">削除</button>
+          <button type="button" data-action="duplicate">複製</button>
+          <button type="button" data-action="pin">${project.pinned ? "固定解除" : "先頭に固定表示"}</button>
+        </div>
+      </div>
     `;
     button.addEventListener("click", () => openProject(project.id));
-    button.querySelector(".mini-danger").addEventListener("click", (event) => {
+    button.addEventListener("keydown", (event) => {
+      if (event.target !== button || (event.key !== "Enter" && event.key !== " ")) return;
+      event.preventDefault();
+      openProject(project.id);
+    });
+    const menuButton = button.querySelector(".customer-menu-button");
+    const menu = button.querySelector(".customer-menu");
+    menuButton.addEventListener("click", (event) => {
       event.stopPropagation();
-      deleteProject(project.id);
+      closeCustomerMenus(menu);
+      const isHidden = menu.classList.toggle("hidden");
+      menuButton.setAttribute("aria-expanded", String(!isHidden));
+    });
+    menu.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const action = event.target.closest("button")?.dataset.action;
+      if (action === "delete") deleteProject(project.id);
+      if (action === "duplicate") duplicateProject(project.id);
+      if (action === "pin") toggleProjectPin(project.id);
     });
     refs.customerList.append(button);
+  });
+}
+
+function closeCustomerMenus(except = null) {
+  document.querySelectorAll(".customer-menu").forEach((menu) => {
+    if (menu === except) return;
+    menu.classList.add("hidden");
+    menu.closest(".customer-menu-wrap")?.querySelector(".customer-menu-button")?.setAttribute("aria-expanded", "false");
   });
 }
 
@@ -1037,18 +1072,38 @@ function bindTaskBarDrag(bar, task) {
     const startX = event.clientX;
     const originalStart = task.start;
     const originalEnd = task.end;
+    const originalWidth = bar.getBoundingClientRect().width;
+    const maxStartDelta = dateDiff(originalStart, originalEnd) * DAY_WIDTH;
+    const minEndDelta = -dateDiff(originalStart, originalEnd) * DAY_WIDTH;
     bar.setPointerCapture(event.pointerId);
     bar.classList.add("dragging");
 
     const onPointerMove = (moveEvent) => {
       const delta = Math.round((moveEvent.clientX - startX) / DAY_WIDTH);
-      bar.style.transform = `translateX(${delta * DAY_WIDTH}px)`;
+      const deltaPx = delta * DAY_WIDTH;
+
+      if (mode === "resize-start") {
+        const clampedDelta = clamp(deltaPx, -99999, maxStartDelta);
+        bar.style.transform = `translateX(${clampedDelta}px)`;
+        bar.style.width = `${Math.max(DAY_WIDTH, originalWidth - clampedDelta)}px`;
+        return;
+      }
+
+      if (mode === "resize-end") {
+        const clampedDelta = clamp(deltaPx, minEndDelta, 99999);
+        bar.style.transform = "";
+        bar.style.width = `${Math.max(DAY_WIDTH, originalWidth + clampedDelta)}px`;
+        return;
+      }
+
+      bar.style.transform = `translateX(${deltaPx}px)`;
     };
 
     const onPointerUp = (upEvent) => {
       const delta = Math.round((upEvent.clientX - startX) / DAY_WIDTH);
       bar.classList.remove("dragging");
       bar.style.transform = "";
+      bar.style.width = "";
       if (bar.hasPointerCapture(upEvent.pointerId)) {
         bar.releasePointerCapture(upEvent.pointerId);
       }
@@ -1334,6 +1389,48 @@ function deleteProject(projectId) {
   } else if (appState.selectedProjectId === projectId) {
     appState.selectedProjectId = appState.projects[0].id;
   }
+  saveState();
+  renderDashboard();
+}
+
+function duplicateProject(projectId) {
+  const source = appState.projects.find((project) => project.id === projectId);
+  if (!source) return;
+  const copy = normalizeProject(JSON.parse(JSON.stringify(source)));
+  const remap = new Map();
+  copy.id = uid("project");
+  copy.project.name = `${copy.project.name || "工程表"} コピー`;
+  copy.createdAt = new Date().toISOString();
+  copy.updatedAt = new Date().toISOString();
+  copy.pinned = false;
+  copy.roles.forEach((role) => {
+    const oldId = role.id;
+    role.id = uid("role");
+    remap.set(oldId, role.id);
+  });
+  copy.members.forEach((member) => {
+    const oldId = member.id;
+    member.id = uid("member");
+    member.roleId = remap.get(member.roleId) || member.roleId;
+    remap.set(oldId, member.id);
+  });
+  copy.tasks.forEach((task) => {
+    task.id = uid("task");
+    task.assigneeId = remap.get(task.assigneeId) || task.assigneeId;
+    task.roleId = remap.get(task.roleId) || task.roleId;
+  });
+  copy.ballOwnerId = remap.get(copy.ballOwnerId) || copy.members[0]?.id || "";
+  appState.projects.unshift(copy);
+  appState.selectedStatus = copy.status;
+  saveState();
+  renderDashboard();
+  showToast("工程表を複製しました");
+}
+
+function toggleProjectPin(projectId) {
+  const project = appState.projects.find((item) => item.id === projectId);
+  if (!project) return;
+  project.pinned = !project.pinned;
   saveState();
   renderDashboard();
 }
