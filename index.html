@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>案件管理　工程表</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://accounts.google.com/gsi/client?hl=ja" async defer></script>
+  </head>
+  <body>
+    <section id="loginView" class="login-view" aria-label="ログイン">
+      <div id="loginForm" class="login-card">
+        <div class="brand login-brand">
+          <span class="brand-mark">P</span>
+          <div>
+            <p>Production Planner</p>
+            <h1>案件管理　工程表</h1>
+          </div>
+        </div>
+        <p class="login-note">会社配布のGoogle Workspaceアカウント（@sooon-web.com）でログインしてください。</p>
+        <div id="googleSignInButton" class="google-signin-button" aria-label="Googleログイン"></div>
+        <p id="loginError" class="login-error" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <div id="appView" class="app-shell hidden">
+      <header class="app-header">
+        <div class="brand">
+          <span class="brand-mark">P</span>
+          <div>
+            <p id="appSubtitle">顧客一覧</p>
+            <h1 id="appTitle">案件管理　工程表</h1>
+          </div>
+        </div>
+        <div id="dashboardToolbar" class="toolbar" aria-label="一覧操作">
+          <button id="newProjectButton" class="primary" type="button">新規作成</button>
+          <button id="settingsButton" class="secondary hidden" type="button">設定</button>
+          <button id="logoutButton" class="ghost" type="button">ログアウト</button>
+        </div>
+        <div id="settingsToolbar" class="toolbar hidden" aria-label="設定操作">
+          <button id="settingsBackButton" class="ghost" type="button">顧客一覧へ</button>
+          <button id="settingsSaveButton" class="primary" type="button">設定を保存</button>
+        </div>
+        <div id="detailToolbar" class="toolbar hidden" aria-label="ファイル操作">
+          <button id="backButton" class="ghost" type="button">顧客一覧へ</button>
+          <button id="clearButton" class="ghost" type="button">クリア</button>
+          <button id="exportButton" class="ghost" type="button">JSON出力</button>
+          <button id="importButton" class="ghost" type="button">JSON読込</button>
+          <button id="imageButton" class="ghost" type="button">画像保存</button>
+          <button id="saveButton" class="primary" type="button">保存</button>
+          <input id="importFile" type="file" accept="application/json,.json" hidden />
+        </div>
+      </header>
+
+      <main id="dashboardView" class="dashboard-view">
+        <aside class="status-column">
+          <button class="status-tab active" type="button" data-status="active">
+            <span>進行中の顧客</span>
+            <strong id="activeCount">0</strong>
+          </button>
+          <button class="status-tab" type="button" data-status="completed">
+            <span>完了した顧客</span>
+            <strong id="completedCount">0</strong>
+          </button>
+          <button class="status-tab" type="button" data-status="scheduled">
+            <span>今後制作予定の顧客</span>
+            <strong id="scheduledCount">0</strong>
+          </button>
+        </aside>
+        <section class="customer-column">
+          <div class="section-title">
+            <div>
+              <h2 id="customerListTitle">進行中の顧客</h2>
+              <p id="customerListLead" class="section-lead">現在進行中の案件を表示しています。</p>
+            </div>
+          </div>
+          <div id="customerList" class="customer-list"></div>
+          <div id="emptyCustomers" class="empty-customers hidden">該当する顧客はまだありません。</div>
+        </section>
+      </main>
+
+      <main id="settingsView" class="settings-view hidden">
+        <section class="panel settings-panel">
+          <div class="section-title">
+            <div>
+              <h2>ログイン許可設定</h2>
+              <p class="section-lead">マスターアカウントでログインした場合のみ、Googleログインの許可条件を編集できます。</p>
+            </div>
+          </div>
+          <div class="settings-grid">
+            <label>
+              <span>マスターアカウント</span>
+              <input id="masterEmail" type="email" readonly />
+            </label>
+            <label>
+              <span>Google OAuth Client ID</span>
+              <input id="googleClientId" type="text" placeholder="xxxx.apps.googleusercontent.com" />
+            </label>
+            <label class="settings-wide">
+              <span>ログイン可能なメールアドレス</span>
+              <textarea id="allowedEmails" rows="8" placeholder="1行につき1メールアドレス"></textarea>
+            </label>
+            <label class="settings-wide">
+              <span>ログイン可能な会社ドメイン</span>
+              <textarea id="allowedDomains" rows="5" placeholder="例: sooon-web.com（1行につき1ドメイン）"></textarea>
+            </label>
+          </div>
+        </section>
+      </main>
+
+      <main id="detailView" class="hidden">
+        <section class="detail-strip" aria-label="顧客詳細の状態">
+          <div class="report-actions">
+            <button id="projectReportButton" class="primary" type="button" disabled>完了工程をまとめて報告</button>
+            <span id="projectReportHint">100%の工程があると送信できます。</span>
+          </div>
+          <label>
+            <span>案件ステータス</span>
+            <select id="projectStatus">
+              <option value="active">進行中</option>
+              <option value="completed">完了</option>
+              <option value="scheduled">今後制作予定</option>
+            </select>
+          </label>
+        </section>
+
+        <section class="summary-panel" aria-label="プロジェクト情報">
+          <div class="field-grid">
+            <label>
+              <span>プロジェクト名</span>
+              <input id="projectName" type="text" placeholder="例: コーポレートサイト制作" />
+            </label>
+            <label>
+              <span>クライアント</span>
+              <input id="clientName" type="text" placeholder="例: 株式会社サンプル" />
+            </label>
+            <label>
+              <span>顧客メール</span>
+              <input id="customerEmail" type="email" placeholder="client@example.com" />
+            </label>
+            <label>
+              <span>代表担当者</span>
+              <input id="ownerName" type="text" placeholder="例: 山田 太郎 様" />
+            </label>
+            <label>
+              <span>開始日</span>
+              <input id="startDate" type="date" />
+            </label>
+            <label>
+              <span>完了予定日</span>
+              <input id="endDate" type="date" />
+            </label>
+          </div>
+          <div class="metrics">
+            <article>
+              <span>制作期間</span>
+              <strong id="durationText">-</strong>
+            </article>
+            <article>
+              <span>進捗</span>
+              <strong id="progressText">0%</strong>
+              <div class="progress-track">
+                <div id="progressBar" class="progress-bar"></div>
+              </div>
+            </article>
+            <article>
+              <span>完了工程</span>
+              <strong id="completeText">0 / 0</strong>
+            </article>
+          </div>
+        </section>
+
+        <section class="masters">
+          <article class="panel">
+            <div class="section-title">
+              <h2>担当者マスター</h2>
+              <button id="addMemberButton" class="icon-button" type="button" aria-label="担当者を追加">+</button>
+            </div>
+            <div class="master-table member-table">
+              <div class="table-head">
+                <span>名前</span>
+                <span>役割</span>
+                <span>プレビュー</span>
+                <span>操作</span>
+              </div>
+              <div id="memberRows"></div>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="section-title">
+              <h2>役割マスター</h2>
+              <button id="addRoleButton" class="secondary" type="button">+ 追加</button>
+            </div>
+            <div id="roleRows" class="role-list"></div>
+          </article>
+        </section>
+
+        <section class="panel chart-panel">
+          <div class="section-title chart-title">
+            <div class="chart-heading">
+              <h2>ガントチャート</h2>
+              <label class="ball-owner-field">
+                <span>現在作業している人（ボール保持者）</span>
+                <select id="ballOwner"></select>
+              </label>
+              <label class="current-work-field">
+                <span>作業内容</span>
+                <input id="currentWorkNote" type="text" placeholder="現在の作業内容を入力" />
+              </label>
+            </div>
+            <div class="chart-actions">
+              <button id="prevWeekButton" class="secondary" type="button">◀ 前週</button>
+              <button id="todayButton" class="secondary" type="button">今日</button>
+              <button id="nextWeekButton" class="secondary" type="button">次週 ▶</button>
+              <button id="addTaskButton" class="primary" type="button">工程追加</button>
+            </div>
+          </div>
+          <div class="chart-scroll">
+            <div id="ganttChart" class="gantt-chart" aria-label="工程表"></div>
+          </div>
+        </section>
+      </main>
+      <button id="floatingSettingsButton" class="floating-settings hidden" type="button">設定</button>
+    </div>
+
+    <dialog id="colorDialog" class="color-dialog">
+      <form method="dialog">
+        <div class="dialog-head">
+          <div>
+            <h3>カラーを選択</h3>
+            <p>役割のイメージカラーを選んでください</p>
+          </div>
+          <button value="cancel" class="icon-button" type="submit" aria-label="閉じる">x</button>
+        </div>
+        <div id="colorChoices" class="color-choices"></div>
+        <label class="custom-color">
+          <span>カスタム</span>
+          <input id="customColor" type="color" />
+        </label>
+        <div class="dialog-actions">
+          <button value="cancel" class="secondary" type="submit">キャンセル</button>
+          <button id="applyColorButton" value="default" class="primary" type="button">決定</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="./app.js"></script>
+  </body>
+</html>
