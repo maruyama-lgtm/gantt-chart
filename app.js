@@ -4,6 +4,8 @@ const APP_TITLE = "案件管理　工程表";
 const DEFAULT_COMPANY_DOMAINS = ["sooon-web.com"];
 const MASTER_EMAIL = "maruyama@sooon-web.com";
 const GOOGLE_CLIENT_ID = "913052066974-1sdbg5mrjl009h7vnnujcsgpgjinqae2.apps.googleusercontent.com";
+const SHARED_STATE_ENDPOINT = "/api/shared-state";
+const SYNC_DEBOUNCE_MS = 800;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const VIEW_DAYS = 42;
 const DAY_WIDTH = 40;
@@ -100,6 +102,9 @@ let appState = createDefaultAppState();
 let state = null;
 let editingRoleId = null;
 let selectedColor = PALETTE[0];
+let sharedSyncTimer = null;
+let sharedSyncDisabled = false;
+let lastSharedSyncErrorAt = 0;
 
 function todayString() {
   return formatDate(new Date());
@@ -390,18 +395,113 @@ function loadState() {
   }
 }
 
-function saveState(show = false) {
-  if (state) state.updatedAt = new Date().toISOString();
+function serializableState() {
+  return {
+    ...appState,
+    isAuthenticated: false,
+    session: null,
+    currentView: "login"
+  };
+}
+
+function persistLocalState() {
   localStorage.setItem(
     STORAGE_KEY,
-    JSON.stringify({
-      ...appState,
-      isAuthenticated: false,
-      session: null,
-      currentView: "login"
-    })
+    JSON.stringify(serializableState())
   );
+}
+
+function saveState(show = false, options = {}) {
+  if (state) state.updatedAt = new Date().toISOString();
+  persistLocalState();
+  if (options.sync !== false) scheduleSharedSave();
   if (show) showToast("保存しました");
+}
+
+function sharedAuthToken() {
+  return appState.session?.idToken || "";
+}
+
+function scheduleSharedSave() {
+  if (sharedSyncDisabled || !appState.isAuthenticated || !sharedAuthToken()) return;
+  clearTimeout(sharedSyncTimer);
+  sharedSyncTimer = setTimeout(() => {
+    saveSharedStateNow().catch((error) => {
+      showSharedSyncError(error.message || "共有データを保存できませんでした");
+    });
+  }, SYNC_DEBOUNCE_MS);
+}
+
+async function saveSharedStateNow() {
+  if (sharedSyncDisabled || !appState.isAuthenticated || !sharedAuthToken()) return false;
+  const response = await fetch(SHARED_STATE_ENDPOINT, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${sharedAuthToken()}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ state: serializableState() })
+  });
+
+  if (response.status === 503) {
+    sharedSyncDisabled = true;
+    throw new Error("共有ストレージが未設定です。Vercelの環境変数を設定すると共有できます。");
+  }
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || "共有データを保存できませんでした");
+  }
+
+  return true;
+}
+
+async function loadSharedState(options = {}) {
+  if (!appState.isAuthenticated || !sharedAuthToken()) return false;
+
+  const response = await fetch(SHARED_STATE_ENDPOINT, {
+    headers: {
+      Authorization: `Bearer ${sharedAuthToken()}`
+    }
+  });
+
+  if (response.status === 503) {
+    sharedSyncDisabled = true;
+    showSharedSyncError("共有ストレージが未設定です。現在は端末内だけに保存されます。");
+    return false;
+  }
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || "共有データを読み込めませんでした");
+  }
+
+  const payload = await response.json();
+  if (payload.state) {
+    const session = appState.session;
+    const currentView = appState.currentView === "login" ? "dashboard" : appState.currentView;
+    appState = normalizeAppState(payload.state);
+    appState.isAuthenticated = true;
+    appState.session = session;
+    appState.currentView = currentView;
+    state = null;
+    persistLocalState();
+    return true;
+  }
+
+  if (options.seedIfEmpty) {
+    await saveSharedStateNow();
+    return true;
+  }
+
+  return false;
+}
+
+function showSharedSyncError(message) {
+  const now = Date.now();
+  if (now - lastSharedSyncErrorAt < 12000) return;
+  lastSharedSyncErrorAt = now;
+  showToast(message);
 }
 
 function currentProject() {
@@ -460,7 +560,7 @@ function renderGoogleLogin() {
   });
 }
 
-function handleGoogleCredential(response) {
+async function handleGoogleCredential(response) {
   try {
     const payload = decodeJwtPayload(response.credential);
     const settings = normalizeSettings(appState.settings);
@@ -488,12 +588,23 @@ function handleGoogleCredential(response) {
       picture: String(payload.picture || ""),
       sub: String(payload.sub || ""),
       authProvider: "google",
+      idToken: response.credential,
       isMaster
     };
     appState.currentView = "dashboard";
     appState.selectedStatus = "active";
     refs.loginError.textContent = "";
-    saveState();
+    persistLocalState();
+    try {
+      await loadSharedState({ seedIfEmpty: true });
+    } catch (syncError) {
+      showSharedSyncError(syncError.message || "共有データを読み込めませんでした");
+    }
+    appState.currentView = "dashboard";
+    appState.selectedStatus = ["active", "completed", "scheduled"].includes(appState.selectedStatus)
+      ? appState.selectedStatus
+      : "active";
+    persistLocalState();
     render();
   } catch (error) {
     refs.loginError.textContent = "Googleログイン情報を確認できませんでした。";
