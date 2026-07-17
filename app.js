@@ -6,6 +6,7 @@ const MASTER_EMAIL = "maruyama@sooon-web.com";
 const GOOGLE_CLIENT_ID = "913052066974-1sdbg5mrjl009h7vnnujcsgpgjinqae2.apps.googleusercontent.com";
 const SHARED_STATE_ENDPOINT = "/api/shared-state";
 const SYNC_DEBOUNCE_MS = 800;
+const SHARED_POLL_MS = 5000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const VIEW_DAYS = 42;
 const DAY_WIDTH = 40;
@@ -103,8 +104,13 @@ let state = null;
 let editingRoleId = null;
 let selectedColor = PALETTE[0];
 let sharedSyncTimer = null;
+let sharedPollTimer = null;
 let sharedSyncDisabled = false;
 let lastSharedSyncErrorAt = 0;
+let lastKnownSharedUpdate = "";
+let localSharedChangesPending = false;
+let sharedRequestInFlight = false;
+let applyingSharedUpdate = false;
 
 function todayString() {
   return formatDate(new Date());
@@ -414,7 +420,10 @@ function persistLocalState() {
 function saveState(show = false, options = {}) {
   if (state) state.updatedAt = new Date().toISOString();
   persistLocalState();
-  if (options.sync !== false) scheduleSharedSave();
+  if (options.sync !== false && !applyingSharedUpdate) {
+    localSharedChangesPending = true;
+    scheduleSharedSave();
+  }
   if (show) showToast("保存しました");
 }
 
@@ -453,48 +462,99 @@ async function saveSharedStateNow() {
     throw new Error(payload.error || "共有データを保存できませんでした");
   }
 
+  const payload = await response.json().catch(() => ({}));
+  lastKnownSharedUpdate = payload.sharedUpdatedAt || lastKnownSharedUpdate;
+  localSharedChangesPending = false;
   return true;
 }
 
 async function loadSharedState(options = {}) {
-  if (!appState.isAuthenticated || !sharedAuthToken()) return false;
+  if (!appState.isAuthenticated || !sharedAuthToken() || sharedRequestInFlight) return false;
+  sharedRequestInFlight = true;
 
-  const response = await fetch(SHARED_STATE_ENDPOINT, {
-    headers: {
-      Authorization: `Bearer ${sharedAuthToken()}`
+  try {
+    const response = await fetch(SHARED_STATE_ENDPOINT, {
+      headers: {
+        Authorization: `Bearer ${sharedAuthToken()}`
+      }
+    });
+
+    if (response.status === 503) {
+      sharedSyncDisabled = true;
+      stopSharedPolling();
+      showSharedSyncError("共有ストレージが未設定です。現在は端末内だけに保存されます。");
+      return false;
     }
-  });
 
-  if (response.status === 503) {
-    sharedSyncDisabled = true;
-    showSharedSyncError("共有ストレージが未設定です。現在は端末内だけに保存されます。");
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || "共有データを読み込めませんでした");
+    }
+
+    const payload = await response.json();
+    const sharedUpdatedAt = payload.state?.sharedUpdatedAt || "";
+    const isNewer = sharedUpdatedAt && (!lastKnownSharedUpdate || sharedUpdatedAt > lastKnownSharedUpdate);
+    if (payload.state && (!options.onlyIfNewer || isNewer)) {
+      if (options.skipWhenLocalChangesPending && localSharedChangesPending) return false;
+      applySharedState(payload.state);
+      lastKnownSharedUpdate = sharedUpdatedAt || lastKnownSharedUpdate;
+      return true;
+    }
+
+    if (options.seedIfEmpty) {
+      await saveSharedStateNow();
+      return true;
+    }
+
     return false;
+  } finally {
+    sharedRequestInFlight = false;
   }
+}
 
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.error || "共有データを読み込めませんでした");
+function applySharedState(sharedState) {
+  const session = appState.session;
+  const currentView = appState.currentView === "login" ? "dashboard" : appState.currentView;
+  const selectedProjectId = appState.selectedProjectId;
+  appState = normalizeAppState(sharedState);
+  if (appState.projects.some((project) => project.id === selectedProjectId)) {
+    appState.selectedProjectId = selectedProjectId;
   }
+  appState.isAuthenticated = true;
+  appState.session = session;
+  appState.currentView = currentView;
+  state = null;
+  persistLocalState();
+}
 
-  const payload = await response.json();
-  if (payload.state) {
-    const session = appState.session;
-    const currentView = appState.currentView === "login" ? "dashboard" : appState.currentView;
-    appState = normalizeAppState(payload.state);
-    appState.isAuthenticated = true;
-    appState.session = session;
-    appState.currentView = currentView;
-    state = null;
-    persistLocalState();
-    return true;
+function startSharedPolling() {
+  stopSharedPolling();
+  if (sharedSyncDisabled || !appState.isAuthenticated || !sharedAuthToken()) return;
+  sharedPollTimer = setInterval(refreshSharedState, SHARED_POLL_MS);
+}
+
+function stopSharedPolling() {
+  if (!sharedPollTimer) return;
+  clearInterval(sharedPollTimer);
+  sharedPollTimer = null;
+}
+
+async function refreshSharedState() {
+  if (document.hidden || sharedSyncDisabled || localSharedChangesPending) return;
+  try {
+    const updated = await loadSharedState({
+      onlyIfNewer: true,
+      skipWhenLocalChangesPending: true
+    });
+    if (!updated) return;
+    applyingSharedUpdate = true;
+    render();
+    applyingSharedUpdate = false;
+    showToast("他の利用者による更新を反映しました");
+  } catch (error) {
+    applyingSharedUpdate = false;
+    showSharedSyncError(error.message || "共有データを読み込めませんでした");
   }
-
-  if (options.seedIfEmpty) {
-    await saveSharedStateNow();
-    return true;
-  }
-
-  return false;
 }
 
 function showSharedSyncError(message) {
@@ -606,6 +666,7 @@ async function handleGoogleCredential(response) {
       : "active";
     persistLocalState();
     render();
+    startSharedPolling();
   } catch (error) {
     refs.loginError.textContent = "Googleログイン情報を確認できませんでした。";
   }
@@ -635,6 +696,7 @@ function bindEvents() {
     if (window.google?.accounts?.id) {
       window.google.accounts.id.disableAutoSelect();
     }
+    stopSharedPolling();
     appState.isAuthenticated = false;
     appState.currentView = "login";
     saveState();
@@ -746,6 +808,10 @@ function bindEvents() {
   refs.customColor.addEventListener("input", () => {
     selectedColor = refs.customColor.value;
     renderColorChoices();
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refreshSharedState();
   });
 }
 
