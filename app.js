@@ -1407,9 +1407,10 @@ function barPosition(task, viewStart, viewEnd) {
   const start = parseDate(task.start);
   const end = parseDate(task.end);
   if (!start || !end || end < viewStart || start > viewEnd) return null;
+  const viewDays = dateDiff(formatDate(viewStart), formatDate(viewEnd)) + 1;
   return {
-    start: clamp(dateDiff(formatDate(viewStart), formatDate(start)), 0, VIEW_DAYS - 1),
-    end: clamp(dateDiff(formatDate(viewStart), formatDate(end)) + 1, 1, VIEW_DAYS)
+    start: clamp(dateDiff(formatDate(viewStart), formatDate(start)), 0, viewDays - 1),
+    end: clamp(dateDiff(formatDate(viewStart), formatDate(end)) + 1, 1, viewDays)
   };
 }
 
@@ -1774,19 +1775,24 @@ function importJson(event) {
 
 function exportImage() {
   const project = currentProject();
+  const { start: scheduleStart, end: scheduleEnd } = fullScheduleRange(project);
+  const totalDays = dateDiff(formatDate(scheduleStart), formatDate(scheduleEnd)) + 1;
   const canvas = document.createElement("canvas");
-  const dayWidth = 34;
-  const leftWidth = 230;
+  const taskNameWidth = 230;
+  const taskMetaWidth = 150;
+  const leftWidth = taskNameWidth + taskMetaWidth;
+  const dayWidth = clamp(Math.floor(12000 / totalDays), 12, 34);
   const rowHeight = 38;
-  const headerHeight = 108;
-  const width = leftWidth + dayWidth * VIEW_DAYS;
+  const headerHeight = 128;
+  const width = leftWidth + dayWidth * totalDays;
   const height = headerHeight + 34 + Math.max(1, project.tasks.length) * rowHeight + 28;
-  canvas.width = width * 2;
-  canvas.height = height * 2;
+  const scale = Math.min(2, 16384 / width, 16384 / height);
+  canvas.width = Math.max(1, Math.floor(width * scale));
+  canvas.height = Math.max(1, Math.floor(height * scale));
   canvas.style.width = `${width}px`;
   canvas.style.height = `${height}px`;
   const ctx = canvas.getContext("2d");
-  ctx.scale(2, 2);
+  ctx.scale(scale, scale);
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, width, height);
   ctx.fillStyle = "#1c2633";
@@ -1796,9 +1802,9 @@ function exportImage() {
   ctx.fillStyle = "#647184";
   ctx.fillText(`クライアント: ${project.project.client || "-"}    代表担当者: ${project.project.owner || "-"}`, 24, 64);
   ctx.fillText(`期間: ${project.project.start || "-"} - ${project.project.end || "-"}    進捗: ${averageProgress(project)}%`, 24, 86);
+  ctx.fillText(`現在作業: ${getMember(project.ballOwnerId)?.name || "-"}    内容: ${project.currentWorkNote || "-"}`, 24, 108);
 
-  const viewStart = parseDate(project.viewStart) || parseDate(todayString());
-  const days = Array.from({ length: VIEW_DAYS }, (_, index) => addDays(viewStart, index));
+  const days = Array.from({ length: totalDays }, (_, index) => addDays(scheduleStart, index));
   const top = headerHeight;
   ctx.fillStyle = "#f0f4f7";
   ctx.fillRect(0, top, width, 34);
@@ -1807,12 +1813,16 @@ function exportImage() {
   ctx.fillStyle = "#647184";
   ctx.font = "700 11px sans-serif";
   ctx.fillText("工程名", 14, top + 22);
+  ctx.fillText("担当 / 進捗", taskNameWidth + 12, top + 22);
   days.forEach((day, index) => {
     const x = leftWidth + index * dayWidth;
     ctx.strokeStyle = "#dce2ea";
     ctx.strokeRect(x, top, dayWidth, 34);
     ctx.fillStyle = formatDate(day) === todayString() ? "#d9902f" : "#647184";
-    ctx.fillText(`${day.getMonth() + 1}/${day.getDate()}`, x + 4, top + 21);
+    ctx.font = `700 ${dayWidth < 20 ? 8 : 10}px sans-serif`;
+    ctx.fillText(`${day.getMonth() + 1}/${day.getDate()}`, x + Math.max(2, Math.floor((dayWidth - 20) / 2)), top + 14);
+    ctx.font = `700 ${dayWidth < 20 ? 8 : 10}px sans-serif`;
+    ctx.fillText(weekday(day), x + Math.max(3, Math.floor((dayWidth - 8) / 2)), top + 27);
   });
 
   project.tasks.forEach((task, index) => {
@@ -1823,7 +1833,11 @@ function exportImage() {
     ctx.strokeRect(0, y, width, rowHeight);
     ctx.fillStyle = "#1c2633";
     ctx.font = "12px sans-serif";
-    ctx.fillText(task.name.slice(0, 26), 14, y + 24);
+    ctx.fillText(task.name.slice(0, 24), 14, y + 24);
+    const assignee = getMember(task.assigneeId);
+    ctx.fillStyle = "#647184";
+    ctx.font = "11px sans-serif";
+    ctx.fillText(`${assignee?.name || "未設定"} / ${progressLabel(task.progress)}`, taskNameWidth + 12, y + 23);
     days.forEach((day, dayIndex) => {
       const x = leftWidth + dayIndex * dayWidth;
       if ([0, 6].includes(day.getDay()) || isJapaneseHoliday(day)) {
@@ -1859,6 +1873,22 @@ function exportImage() {
     downloadBlob(blob, `${safeFileName(project.project.name || project.project.client || "web-production-gantt")}.png`);
     showToast("画像を書き出しました");
   });
+}
+
+function fullScheduleRange(project) {
+  const dates = [project.project.start, project.project.end, ...project.tasks.flatMap((task) => [task.start, task.end])]
+    .map(parseDate)
+    .filter(Boolean);
+  const fallbackStart = parseDate(project.viewStart) || parseDate(todayString());
+  if (!dates.length) {
+    return { start: fallbackStart, end: addDays(fallbackStart, VIEW_DAYS - 1) };
+  }
+
+  const timestamps = dates.map((date) => date.getTime());
+  return {
+    start: new Date(Math.min(...timestamps)),
+    end: new Date(Math.max(...timestamps))
+  };
 }
 
 function roundedRect(ctx, x, y, width, height, radius) {
