@@ -1462,3 +1462,293 @@ select:focus {
     text-align: left;
   }
 }
+
+@media (max-width: 680px) {
+  body {
+    min-width: 0;
+  }
+
+  .app-shell,
+  .public-view {
+    width: calc(100vw - 24px);
+    margin: 12px auto 32px;
+  }
+
+  .app-header,
+  .public-header,
+  .public-chart-title,
+  .section-title {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .brand {
+    gap: 10px;
+  }
+
+  .brand-mark {
+    width: 38px;
+    height: 38px;
+  }
+
+  .brand h1,
+  .public-summary h2 {
+    font-size: 20px;
+  }
+
+  .toolbar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .toolbar button {
+    width: 100%;
+    padding: 0 8px;
+  }
+
+  .status-column {
+    display: flex;
+    overflow-x: auto;
+    gap: 8px;
+    padding: 8px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .status-tab {
+    min-width: 152px;
+    min-height: 48px;
+    padding: 10px;
+  }
+
+  .customer-column {
+    min-height: 0;
+    padding: 14px;
+  }
+
+  .customer-card {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .customer-main {
+    grid-column: 1;
+  }
+
+  .customer-meta,
+  .customer-progress {
+    grid-column: 1;
+  }
+
+  .customer-menu-wrap {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .customer-progress strong {
+    font-size: 18px;
+  }
+
+  .detail-strip,
+  .summary-panel,
+  .panel {
+    border-radius: 8px;
+  }
+
+  .detail-strip,
+  .summary-panel {
+    gap: 14px;
+    padding: 14px;
+  }
+
+  .report-actions .primary {
+    width: 100%;
+  }
+
+  .metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .metrics article {
+    min-height: 72px;
+    padding: 12px;
+  }
+
+  .masters {
+    gap: 12px;
+  }
+
+  .master-table {
+    overflow-x: auto;
+  }
+
+  .table-head,
+  .member-row {
+    min-width: 560px;
+  }
+
+  .chart-title {
+    align-items: stretch;
+    padding: 14px;
+  }
+
+  .chart-heading {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .ball-owner-field,
+  .current-work-field {
+    display: grid;
+    grid-template-columns: 1fr;
+    min-width: 0;
+    gap: 5px;
+  }
+
+  .chart-actions {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .chart-actions button {
+    min-height: 38px;
+    padding: 0 5px;
+    font-size: 12px;
+  }
+
+  .chart-scroll {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .gantt-chart {
+    --task-name-width: 178px;
+    --task-meta-width: 302px;
+    --day-width: 36px;
+  }
+
+  .public-gantt {
+    --task-name-width: 154px;
+    --task-meta-width: 210px;
+    --day-width: 34px;
+  }
+
+  .corner,
+  .meta-head,
+  .task-name,
+  .task-meta {
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .task-controls {
+    grid-template-columns: minmax(0, 1fr) 80px 52px 30px 30px;
+    gap: 4px;
+  }
+
+  .task-controls input,
+  .task-controls select {
+    min-width: 0;
+    padding: 6px 5px;
+    font-size: 11px;
+  }
+
+  .task-controls .mini-danger,
+  .task-order-handle {
+    width: 30px;
+    height: 30px;
+  }
+
+  .mail-button {
+    width: 52px;
+    font-size: 11px;
+  }
+
+  .task-bar span {
+    max-width: 100%;
+    overflow: hidden;
+    padding-right: 6px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .gantt-row.today-boundary .task-name::before {
+    left: 4px;
+    font-size: 10px;
+  }
+
+  .public-summary {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 16px;
+  }
+
+  .public-metrics {
+    gap: 6px;
+  }
+
+  .public-metrics article {
+    min-height: 72px;
+    padding: 10px;
+  }
+
+  .public-metrics strong {
+    font-size: 17px;
+  }
+
+  .public-chart-title {
+    min-height: 0;
+    padding: 14px;
+  }
+
+  .public-chart-title h2 {
+    font-size: 18px;
+  }
+
+  .public-chart-title > span {
+    font-size: 11px;
+  }
+
+  .public-meta-head,
+  .public-task-meta {
+    grid-template-columns: minmax(0, 1fr) 72px;
+    gap: 5px;
+  }
+
+  .public-meta-head span:last-child,
+  .public-task-meta span:last-child {
+    padding-left: 5px;
+  }
+
+  .public-task-name,
+  .public-task-meta {
+    font-size: 11px;
+  }
+
+  .share-dialog-actions,
+  .dialog-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .share-dialog-actions button,
+  .dialog-actions button {
+    width: 100%;
+  }
+
+  .floating-settings {
+    right: 14px;
+    bottom: 14px;
+    left: auto;
+  }
+
+  .toast {
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    text-align: center;
+  }
+}
