@@ -832,13 +832,14 @@ select:focus {
   --task-name-width: 260px;
   --task-meta-width: 320px;
   --day-width: 40px;
-  min-width: calc(var(--task-name-width) + var(--task-meta-width) + var(--day-width) * 42);
+  --timeline-days: 42;
+  min-width: calc(var(--task-name-width) + var(--task-meta-width) + var(--day-width) * var(--timeline-days));
 }
 
 .gantt-header,
 .gantt-row {
   display: grid;
-  grid-template-columns: var(--task-name-width) var(--task-meta-width) repeat(42, var(--day-width));
+  grid-template-columns: var(--task-name-width) var(--task-meta-width) repeat(var(--timeline-days), var(--day-width));
 }
 
 .gantt-header {
@@ -978,7 +979,7 @@ select:focus {
 
 .bar-layer {
   display: grid;
-  grid-template-columns: var(--task-name-width) var(--task-meta-width) repeat(42, var(--day-width));
+  grid-template-columns: var(--task-name-width) var(--task-meta-width) repeat(var(--timeline-days), var(--day-width));
   pointer-events: none;
   position: absolute;
   inset: 0;
@@ -1061,6 +1062,31 @@ select:focus {
 
 .color-dialog form {
   padding: 20px;
+}
+
+.task-insert-dialog {
+  width: min(420px, calc(100vw - 32px));
+  border: 0;
+  border-radius: 8px;
+  padding: 0;
+  box-shadow: 0 30px 80px rgba(20, 29, 40, 0.28);
+}
+
+.task-insert-dialog::backdrop {
+  background: rgba(19, 27, 36, 0.45);
+}
+
+.task-insert-dialog form {
+  padding: 20px;
+}
+
+.task-insert-date-field {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 20px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .dialog-head {

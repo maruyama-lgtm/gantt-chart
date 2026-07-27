@@ -92,10 +92,15 @@ const refs = {
   memberRows: $("#memberRows"),
   roleRows: $("#roleRows"),
   ganttChart: $("#ganttChart"),
+  chartScroll: $(".chart-scroll"),
   importFile: $("#importFile"),
   colorDialog: $("#colorDialog"),
   colorChoices: $("#colorChoices"),
   customColor: $("#customColor"),
+  taskInsertDialog: $("#taskInsertDialog"),
+  taskInsertForm: $("#taskInsertForm"),
+  taskInsertDate: $("#taskInsertDate"),
+  taskInsertCancelButton: $("#taskInsertCancelButton"),
   toast: $("#toast")
 };
 
@@ -789,14 +794,15 @@ function bindEvents() {
   refs.importFile.addEventListener("change", importJson);
   $("#addMemberButton").addEventListener("click", addMember);
   $("#addRoleButton").addEventListener("click", addRole);
-  $("#addTaskButton").addEventListener("click", addTask);
+  $("#addTaskButton").addEventListener("click", openTaskInsertDialog);
   $("#prevWeekButton").addEventListener("click", () => moveView(-7));
   $("#nextWeekButton").addEventListener("click", () => moveView(7));
   $("#todayButton").addEventListener("click", () => {
-    currentProject().viewStart = mondayOf(parseDate(todayString()));
-    renderDetail();
+    scrollGanttToDate(todayString());
   });
   $("#applyColorButton").addEventListener("click", applyRoleColor);
+  refs.taskInsertForm.addEventListener("submit", addTask);
+  refs.taskInsertCancelButton.addEventListener("click", () => refs.taskInsertDialog.close());
 
   refs.colorChoices.addEventListener("click", (event) => {
     const button = event.target.closest("[data-color]");
@@ -1130,9 +1136,10 @@ function renderRoles() {
 
 function renderGantt() {
   const project = currentProject();
-  const viewStart = parseDate(project.viewStart) || parseDate(todayString());
-  const days = Array.from({ length: VIEW_DAYS }, (_, index) => addDays(viewStart, index));
+  const { start: viewStart, end: viewEnd } = fullScheduleRange(project);
+  const days = Array.from({ length: dateDiff(formatDate(viewStart), formatDate(viewEnd)) + 1 }, (_, index) => addDays(viewStart, index));
   refs.ganttChart.innerHTML = "";
+  refs.ganttChart.style.setProperty("--timeline-days", String(days.length));
 
   const header = document.createElement("div");
   header.className = "gantt-header";
@@ -1661,10 +1668,28 @@ function removeRole(id) {
   renderDetail();
 }
 
-function addTask() {
+function openTaskInsertDialog() {
+  const project = currentProject();
+  const latestTaskEnd = project.tasks
+    .map((task) => parseDate(task.end))
+    .filter(Boolean)
+    .sort((a, b) => b - a)[0];
+  const fallbackStart = parseDate(project.project.start) || parseDate(todayString());
+  refs.taskInsertDate.value = formatDate(addDays(latestTaskEnd || fallbackStart, latestTaskEnd ? 1 : 0));
+  refs.taskInsertDialog.showModal();
+}
+
+function addTask(event) {
+  event.preventDefault();
+  const startDate = parseDate(refs.taskInsertDate.value);
+  if (!startDate) {
+    showToast("開始日を選択してください");
+    return;
+  }
+
   const project = currentProject();
   const member = project.members[0];
-  const start = project.project.start || todayString();
+  const start = formatDate(startDate);
   project.tasks.push({
     id: uid("task"),
     name: "新規工程",
@@ -1675,8 +1700,11 @@ function addTask() {
     end: formatDate(addDays(parseDate(start), 4)),
     progress: 0
   });
+  project.tasks.sort((a, b) => String(a.start).localeCompare(String(b.start)) || String(a.end).localeCompare(String(b.end)));
   reconcileProjectDates();
+  refs.taskInsertDialog.close();
   renderDetail();
+  requestAnimationFrame(() => scrollGanttToDate(start));
 }
 
 function removeTask(id) {
@@ -1687,10 +1715,13 @@ function removeTask(id) {
 }
 
 function moveView(days) {
-  const project = currentProject();
-  const current = parseDate(project.viewStart) || parseDate(todayString());
-  project.viewStart = formatDate(addDays(current, days));
-  renderDetail();
+  refs.chartScroll.scrollBy({ left: days * DAY_WIDTH, behavior: "smooth" });
+}
+
+function scrollGanttToDate(dateString) {
+  const { start } = fullScheduleRange(currentProject());
+  const dayIndex = Math.max(0, dateDiff(formatDate(start), dateString));
+  refs.chartScroll.scrollTo({ left: Math.max(0, dayIndex * DAY_WIDTH - DAY_WIDTH * 2), behavior: "smooth" });
 }
 
 function openColorDialog(roleId) {

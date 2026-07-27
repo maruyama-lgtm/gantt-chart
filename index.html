@@ -249,6 +249,24 @@
       </form>
     </dialog>
 
+    <dialog id="taskInsertDialog" class="task-insert-dialog">
+      <form id="taskInsertForm">
+        <div class="dialog-head">
+          <div>
+            <h3>工程を追加</h3>
+          </div>
+        </div>
+        <label class="task-insert-date-field">
+          <span>開始日</span>
+          <input id="taskInsertDate" type="date" required />
+        </label>
+        <div class="dialog-actions">
+          <button id="taskInsertCancelButton" class="ghost" type="button">キャンセル</button>
+          <button class="primary" type="submit">追加</button>
+        </div>
+      </form>
+    </dialog>
+
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <script src="./app.js"></script>
   </body>
