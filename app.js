@@ -2213,8 +2213,13 @@ function exportImage() {
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.moveTo(0, y);
-      ctx.lineTo(taskNameWidth, y);
+      ctx.lineTo(leftWidth, y);
       ctx.stroke();
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(8, y - 10, 84, 16);
+      ctx.fillStyle = "#d92d20";
+      ctx.font = "700 10px sans-serif";
+      ctx.fillText("本日までの予定", 13, y + 1);
       ctx.lineWidth = 1;
     }
   });
