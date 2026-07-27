@@ -137,7 +137,6 @@ function sanitizeState(input) {
 }
 
 function publicProject(project) {
-  const members = Array.isArray(project?.members) ? project.members : [];
   const roles = Array.isArray(project?.roles) ? project.roles : [];
   const tasks = Array.isArray(project?.tasks) ? project.tasks : [];
   const details = project?.project && typeof project.project === "object" ? project.project : {};
@@ -147,30 +146,21 @@ function publicProject(project) {
     project: {
       name: String(details.name || ""),
       client: String(details.client || ""),
-      owner: String(details.owner || ""),
       start: String(details.start || ""),
       end: String(details.end || "")
     },
     roles: roles.map((role) => ({
       id: String(role?.id || ""),
-      name: String(role?.name || ""),
       color: String(role?.color || "#206b73")
-    })),
-    members: members.map((member) => ({
-      id: String(member?.id || ""),
-      name: String(member?.name || ""),
-      roleId: String(member?.roleId || "")
     })),
     tasks: tasks.map((task) => ({
       id: String(task?.id || ""),
       name: String(task?.name || ""),
-      assigneeId: String(task?.assigneeId || ""),
       roleId: String(task?.roleId || ""),
       start: String(task?.start || ""),
       end: String(task?.end || ""),
       progress: Number(task?.progress) || 0
     })),
-    ballOwnerId: String(project?.ballOwnerId || ""),
     currentWorkNote: String(project?.currentWorkNote || ""),
     updatedAt: String(project?.updatedAt || "")
   };

@@ -673,7 +673,7 @@ async function renderPublicShare() {
     if (!response.ok || !payload.project) {
       throw new Error(payload.error || "閲覧リンクを読み込めませんでした");
     }
-    renderPublicProject(normalizeProject(payload.project));
+    renderPublicProject(normalizePublicProject(payload.project));
   } catch (error) {
     refs.publicView.innerHTML = `
       <section class="public-state">
@@ -687,10 +687,45 @@ async function renderPublicShare() {
   }
 }
 
+function normalizePublicProject(input) {
+  const project = input && typeof input === "object" ? input : {};
+  const details = project.project && typeof project.project === "object" ? project.project : {};
+  return {
+    status: ["active", "completed", "scheduled"].includes(project.status) ? project.status : "active",
+    project: {
+      name: String(details.name || ""),
+      client: String(details.client || ""),
+      start: String(details.start || ""),
+      end: String(details.end || "")
+    },
+    roles: Array.isArray(project.roles)
+      ? project.roles.map((role) => ({ id: String(role?.id || ""), color: String(role?.color || "#5d6470") }))
+      : [],
+    tasks: Array.isArray(project.tasks)
+      ? project.tasks.map((task) => ({
+        id: String(task?.id || ""),
+        name: String(task?.name || ""),
+        roleId: String(task?.roleId || ""),
+        start: String(task?.start || ""),
+        end: String(task?.end || ""),
+        progress: clamp(Number(task?.progress) || 0, 0, 100)
+      }))
+      : [],
+    currentWorkNote: String(project.currentWorkNote || ""),
+    updatedAt: String(project.updatedAt || "")
+  };
+}
+
+function publicTaskPeriod(task) {
+  const start = parseDate(task.start);
+  const end = parseDate(task.end);
+  const format = (date) => date ? `${date.getMonth() + 1}月${date.getDate()}日` : "-";
+  return `${format(start)}〜${format(end)}`;
+}
+
 function renderPublicProject(project) {
   const completed = project.tasks.filter((task) => Number(task.progress) >= 100).length;
   const duration = project.project.start && project.project.end ? dateDiff(project.project.start, project.project.end) + 1 : 0;
-  const ballOwner = projectMember(project, project.ballOwnerId);
   const updatedAt = project.updatedAt ? new Date(project.updatedAt).toLocaleString("ja-JP") : "-";
   document.title = `${project.project.client || project.project.name || APP_TITLE} | ${APP_TITLE}`;
   refs.publicView.innerHTML = `
@@ -706,7 +741,6 @@ function renderPublicProject(project) {
         <p class="public-eyebrow">${escapeHtml(STATUS_LABELS[project.status]?.title || "工程表")}</p>
         <h2>${escapeHtml(project.project.client || "未設定の顧客")}</h2>
         <p class="public-project-name">${escapeHtml(project.project.name || "未設定の工程表")}</p>
-        <p class="public-owner">代表担当者: ${escapeHtml(project.project.owner || "-")}</p>
       </div>
       <div class="public-metrics">
         <article><span>制作期間</span><strong>${duration > 0 ? `${duration}日` : "-"}</strong></article>
@@ -716,7 +750,7 @@ function renderPublicProject(project) {
     </section>
     <section class="panel public-chart-panel">
       <div class="public-chart-title">
-        <div><h2>ガントチャート</h2><p>現在作業: ${escapeHtml(ballOwner?.name || "-")} / ${escapeHtml(project.currentWorkNote || "-")}</p></div>
+        <div><h2>ガントチャート</h2><p>現在の作業内容: ${escapeHtml(project.currentWorkNote || "-")}</p></div>
         <span>最終更新: ${escapeHtml(updatedAt)}</span>
       </div>
       <div class="chart-scroll"><div id="publicGanttChart" class="gantt-chart public-gantt" aria-label="公開工程表"></div></div>
@@ -734,7 +768,7 @@ function renderPublicGantt(chart, project) {
 
   const header = document.createElement("div");
   header.className = "gantt-header";
-  header.innerHTML = `<div class="corner">工程名</div><div class="meta-head">担当 / 進捗</div>`;
+  header.innerHTML = `<div class="corner">工程名</div><div class="meta-head">期間</div>`;
   days.forEach((day) => {
     const cell = document.createElement("div");
     cell.className = `day-head ${dayClass(day)}`;
@@ -744,14 +778,13 @@ function renderPublicGantt(chart, project) {
   chart.append(header);
 
   project.tasks.forEach((task) => {
-    const member = projectMember(project, task.assigneeId);
-    const role = roleById.get(task.roleId) || roleById.get(member?.roleId) || { color: "#5d6470" };
+    const role = roleById.get(task.roleId) || { color: "#5d6470" };
     const progress = Number(task.progress) || 0;
     const row = document.createElement("div");
     row.className = "gantt-row";
     row.innerHTML = `
       <div class="task-name public-task-name">${escapeHtml(task.name)}</div>
-      <div class="task-meta public-task-meta">${escapeHtml(member?.name || "未設定")} / ${escapeHtml(progressLabel(progress))}</div>
+      <div class="task-meta public-task-meta">${escapeHtml(publicTaskPeriod(task))}</div>
     `;
     days.forEach((day) => {
       const cell = document.createElement("div");
