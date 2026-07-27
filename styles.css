@@ -833,7 +833,8 @@ select:focus {
   --task-meta-width: 320px;
   --day-width: 40px;
   --timeline-days: 42;
-  min-width: calc(var(--task-name-width) + var(--task-meta-width) + var(--day-width) * var(--timeline-days));
+  --timeline-width: 1680px;
+  min-width: calc(var(--task-name-width) + var(--task-meta-width) + var(--timeline-width));
 }
 
 .gantt-header,

@@ -1140,6 +1140,7 @@ function renderGantt() {
   const days = Array.from({ length: dateDiff(formatDate(viewStart), formatDate(viewEnd)) + 1 }, (_, index) => addDays(viewStart, index));
   refs.ganttChart.innerHTML = "";
   refs.ganttChart.style.setProperty("--timeline-days", String(days.length));
+  refs.ganttChart.style.setProperty("--timeline-width", `${days.length * DAY_WIDTH}px`);
 
   const header = document.createElement("div");
   header.className = "gantt-header";
