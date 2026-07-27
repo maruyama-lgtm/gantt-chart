@@ -1625,15 +1625,24 @@ select:focus {
   }
 
   .gantt-chart {
-    --task-name-width: 178px;
+    --task-name-width: 148px;
     --task-meta-width: 302px;
     --day-width: 36px;
   }
 
   .public-gantt {
-    --task-name-width: 154px;
-    --task-meta-width: 210px;
+    --task-name-width: 148px;
+    --task-meta-width: 188px;
     --day-width: 34px;
+  }
+
+  .task-meta,
+  .gantt-header .meta-head {
+    position: static;
+  }
+
+  .task-meta {
+    left: auto;
   }
 
   .corner,
