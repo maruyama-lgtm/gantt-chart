@@ -157,6 +157,11 @@ function dateDiff(start, end) {
   return Math.round((endDate - startDate) / DAY_MS);
 }
 
+function calendarDuration(start, end) {
+  if (!parseDate(start) || !parseDate(end) || dateDiff(start, end) < 0) return 0;
+  return dateDiff(start, end) + 1;
+}
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -725,7 +730,7 @@ function publicTaskPeriod(task) {
 
 function renderPublicProject(project) {
   const completed = project.tasks.filter((task) => Number(task.progress) >= 100).length;
-  const duration = project.project.start && project.project.end ? dateDiff(project.project.start, project.project.end) + 1 : 0;
+  const duration = calendarDuration(project.project.start, project.project.end);
   const updatedAt = project.updatedAt ? new Date(project.updatedAt).toLocaleString("ja-JP") : "-";
   document.title = `${project.project.client || project.project.name || APP_TITLE} | ${APP_TITLE}`;
   refs.publicView.innerHTML = `
@@ -743,7 +748,7 @@ function renderPublicProject(project) {
         <p class="public-project-name">${escapeHtml(project.project.name || "未設定の工程表")}</p>
       </div>
       <div class="public-metrics">
-        <article><span>制作期間</span><strong>${duration > 0 ? `${duration}日` : "-"}</strong></article>
+        <article><span>制作期間（全日程）</span><strong>${duration > 0 ? `全${duration}日` : "-"}</strong></article>
         <article><span>進捗</span><strong>${averageProgress(project)}%</strong></article>
         <article><span>完了工程</span><strong>${completed} / ${project.tasks.length}</strong></article>
       </div>
@@ -1269,10 +1274,10 @@ function renderDetailHeader() {
 
 function renderSummary() {
   const project = currentProject();
-  const duration = project.project.start && project.project.end ? dateDiff(project.project.start, project.project.end) + 1 : 0;
+  const duration = calendarDuration(project.project.start, project.project.end);
   const completed = project.tasks.filter((task) => Number(task.progress) >= 100).length;
   const average = averageProgress(project);
-  refs.durationText.textContent = duration > 0 ? `${duration}日` : "-";
+  refs.durationText.textContent = duration > 0 ? `全${duration}日` : "-";
   refs.progressText.textContent = `${average}%`;
   refs.progressBar.style.width = `${average}%`;
   refs.completeText.textContent = `${completed} / ${project.tasks.length}`;
