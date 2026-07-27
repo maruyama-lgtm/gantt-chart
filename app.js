@@ -768,12 +768,13 @@ function renderPublicGantt(chart, project) {
   const { start, end } = fullScheduleRange(project);
   const days = Array.from({ length: dateDiff(formatDate(start), formatDate(end)) + 1 }, (_, index) => addDays(start, index));
   const roleById = new Map(project.roles.map((role) => [role.id, role]));
+  const todayBoundaryIndex = project.tasks.findIndex((task) => String(task.start) > todayString());
   chart.style.setProperty("--timeline-days", String(days.length));
   chart.style.setProperty("--timeline-width", `${days.length * DAY_WIDTH}px`);
 
   const header = document.createElement("div");
   header.className = "gantt-header";
-  header.innerHTML = `<div class="corner">工程名</div><div class="meta-head">期間</div>`;
+  header.innerHTML = `<div class="corner">工程名</div><div class="meta-head public-meta-head"><span>期間</span><span>ステータス</span></div>`;
   days.forEach((day) => {
     const cell = document.createElement("div");
     cell.className = `day-head ${dayClass(day)}`;
@@ -782,14 +783,15 @@ function renderPublicGantt(chart, project) {
   });
   chart.append(header);
 
-  project.tasks.forEach((task) => {
+  project.tasks.forEach((task, index) => {
     const role = roleById.get(task.roleId) || { color: "#5d6470" };
     const progress = Number(task.progress) || 0;
     const row = document.createElement("div");
     row.className = "gantt-row";
+    row.classList.toggle("today-boundary", index === todayBoundaryIndex);
     row.innerHTML = `
       <div class="task-name public-task-name">${escapeHtml(task.name)}</div>
-      <div class="task-meta public-task-meta">${escapeHtml(publicTaskPeriod(task))}</div>
+      <div class="task-meta public-task-meta"><span>${escapeHtml(publicTaskPeriod(task))}</span><span>${escapeHtml(progressLabel(progress))}</span></div>
     `;
     days.forEach((day) => {
       const cell = document.createElement("div");
@@ -1374,6 +1376,7 @@ function renderGantt() {
   const project = currentProject();
   const { start: viewStart, end: viewEnd } = fullScheduleRange(project);
   const days = Array.from({ length: dateDiff(formatDate(viewStart), formatDate(viewEnd)) + 1 }, (_, index) => addDays(viewStart, index));
+  const todayBoundaryIndex = project.tasks.findIndex((task) => String(task.start) > todayString());
   refs.ganttChart.innerHTML = "";
   refs.ganttChart.style.setProperty("--timeline-days", String(days.length));
   refs.ganttChart.style.setProperty("--timeline-width", `${days.length * DAY_WIDTH}px`);
@@ -1389,9 +1392,10 @@ function renderGantt() {
   });
   refs.ganttChart.append(header);
 
-  project.tasks.forEach((task) => {
+  project.tasks.forEach((task, index) => {
     const row = document.createElement("div");
     row.className = "gantt-row";
+    row.classList.toggle("today-boundary", index === todayBoundaryIndex);
     row.dataset.taskId = task.id;
     row.innerHTML = `
       <div class="task-name"><input class="task-title-input" type="text" value="${escapeAttr(task.name)}" aria-label="工程名" /></div>
@@ -2137,6 +2141,8 @@ function exportImage() {
   ctx.fillText(`現在作業: ${getMember(project.ballOwnerId)?.name || "-"}    内容: ${project.currentWorkNote || "-"}`, 24, 108);
 
   const days = Array.from({ length: totalDays }, (_, index) => addDays(scheduleStart, index));
+  const today = todayString();
+  const todayBoundaryIndex = project.tasks.findIndex((task) => String(task.start) > today);
   const top = headerHeight;
   ctx.fillStyle = "#f0f4f7";
   ctx.fillRect(0, top, width, 34);
@@ -2148,9 +2154,13 @@ function exportImage() {
   ctx.fillText("担当 / 進捗", taskNameWidth + 12, top + 22);
   days.forEach((day, index) => {
     const x = leftWidth + index * dayWidth;
+    if (formatDate(day) === today) {
+      ctx.fillStyle = "#eaff00";
+      ctx.fillRect(x, top, dayWidth, 34);
+    }
     ctx.strokeStyle = "#dce2ea";
     ctx.strokeRect(x, top, dayWidth, 34);
-    ctx.fillStyle = formatDate(day) === todayString() ? "#d9902f" : "#647184";
+    ctx.fillStyle = formatDate(day) === today ? "#263000" : "#647184";
     ctx.font = `700 ${dayWidth < 20 ? 8 : 10}px sans-serif`;
     ctx.fillText(`${day.getMonth() + 1}/${day.getDate()}`, x + Math.max(2, Math.floor((dayWidth - 20) / 2)), top + 14);
     ctx.font = `700 ${dayWidth < 20 ? 8 : 10}px sans-serif`;
@@ -2172,7 +2182,10 @@ function exportImage() {
     ctx.fillText(`${assignee?.name || "未設定"} / ${progressLabel(task.progress)}`, taskNameWidth + 12, y + 23);
     days.forEach((day, dayIndex) => {
       const x = leftWidth + dayIndex * dayWidth;
-      if ([0, 6].includes(day.getDay()) || isJapaneseHoliday(day)) {
+      if (formatDate(day) === today) {
+        ctx.fillStyle = "#eaff00";
+        ctx.fillRect(x, y, dayWidth, rowHeight);
+      } else if ([0, 6].includes(day.getDay()) || isJapaneseHoliday(day)) {
         ctx.fillStyle = "#e7ebef";
         ctx.fillRect(x, y, dayWidth, rowHeight);
       }
@@ -2194,6 +2207,15 @@ function exportImage() {
       ctx.fillStyle = progress >= 45 ? "#ffffff" : "#1c2633";
       ctx.font = "700 10px sans-serif";
       ctx.fillText(progressLabel(progress), x + 8, y + 23);
+    }
+    if (index === todayBoundaryIndex) {
+      ctx.strokeStyle = "#ff3b30";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(taskNameWidth, y);
+      ctx.stroke();
+      ctx.lineWidth = 1;
     }
   });
 

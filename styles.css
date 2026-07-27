@@ -353,6 +353,19 @@ main {
   font-size: 12px;
 }
 
+.public-meta-head,
+.public-task-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 88px;
+  gap: 8px;
+}
+
+.public-meta-head span:last-child,
+.public-task-meta span:last-child {
+  border-left: 1px solid var(--line-soft);
+  padding-left: 8px;
+}
+
 .public-task-bar {
   cursor: default;
   pointer-events: none;
@@ -1054,13 +1067,15 @@ select:focus {
 
 .day-head.today,
 .day-cell.today {
-  background: #fff8e9;
+  background: #eaff00;
+  color: #263000;
+  box-shadow: inset 0 0 0 2px #c8dc00;
 }
 
-.day-head.weekend,
-.day-cell.weekend,
-.day-head.holiday,
-.day-cell.holiday {
+.day-head.weekend:not(.today),
+.day-cell.weekend:not(.today),
+.day-head.holiday:not(.today),
+.day-cell.holiday:not(.today) {
   background: #e7ebef;
 }
 
@@ -1155,6 +1170,10 @@ select:focus {
 .gantt-row {
   position: relative;
   min-height: 54px;
+}
+
+.gantt-row.today-boundary .task-name {
+  border-top: 3px solid #ff3b30;
 }
 
 .day-cell {
