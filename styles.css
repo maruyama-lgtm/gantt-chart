@@ -928,7 +928,7 @@ select:focus {
 
 .task-controls {
   display: grid;
-  grid-template-columns: 112px 92px 64px 32px;
+  grid-template-columns: 112px 92px 64px 32px 32px;
   gap: 8px;
   align-items: center;
 }
@@ -943,6 +943,47 @@ select:focus {
 .task-controls .mini-danger {
   width: 32px;
   height: 32px;
+}
+
+.task-order-handle {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f8fafc;
+  color: var(--muted);
+  cursor: grab;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.task-order-handle:active {
+  cursor: grabbing;
+}
+
+.gantt-row.reordering {
+  opacity: 0.55;
+}
+
+.gantt-row.drop-before::before,
+.gantt-row.drop-after::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  left: 0;
+  z-index: 8;
+  height: 3px;
+  background: var(--primary);
+  pointer-events: none;
+}
+
+.gantt-row.drop-before::before {
+  top: -2px;
+}
+
+.gantt-row.drop-after::after {
+  bottom: -2px;
 }
 
 .mail-button {

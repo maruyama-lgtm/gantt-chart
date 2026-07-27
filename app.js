@@ -116,6 +116,7 @@ let lastKnownSharedUpdate = "";
 let localSharedChangesPending = false;
 let sharedRequestInFlight = false;
 let applyingSharedUpdate = false;
+let draggingTaskId = "";
 
 function todayString() {
   return formatDate(new Date());
@@ -1156,6 +1157,7 @@ function renderGantt() {
   project.tasks.forEach((task) => {
     const row = document.createElement("div");
     row.className = "gantt-row";
+    row.dataset.taskId = task.id;
     row.innerHTML = `
       <div class="task-name"><input class="task-title-input" type="text" value="${escapeAttr(task.name)}" aria-label="工程名" /></div>
       <div class="task-meta">
@@ -1163,6 +1165,7 @@ function renderGantt() {
           <select aria-label="担当者">${memberOptions(task.assigneeId)}</select>
           <select aria-label="進捗">${progressOptions(task.progress)}</select>
           ${mailButtonHtml(task)}
+          <button class="task-order-handle" type="button" draggable="true" aria-label="工程の順番を変更" title="ドラッグして順番を変更">↕</button>
           <button class="mini-danger" type="button" aria-label="工程を削除">x</button>
         </div>
       </div>
@@ -1196,7 +1199,7 @@ function renderGantt() {
 
     const taskInput = row.querySelector(".task-title-input");
     const controls = row.querySelector(".task-controls");
-    const [memberSelect, progressSelect, mailButton, deleteButton] = controls.children;
+    const [memberSelect, progressSelect, mailButton, orderHandle, deleteButton] = controls.children;
     taskInput.addEventListener("input", () => {
       task.name = taskInput.value;
       updateTaskBar(row, task);
@@ -1229,6 +1232,7 @@ function renderGantt() {
       }
     });
     deleteButton.addEventListener("click", () => removeTask(task.id));
+    bindTaskReorder(row, task, orderHandle);
 
     refs.ganttChart.append(row);
   });
@@ -1243,6 +1247,61 @@ function updateTaskBar(row, task) {
   bar.classList.toggle("is-filled", progress >= 45);
   if (fill) fill.style.width = `${progress}%`;
   if (label) label.textContent = `${task.name} ${progressLabel(progress)}`;
+}
+
+function bindTaskReorder(row, task, handle) {
+  handle.addEventListener("dragstart", (event) => {
+    draggingTaskId = task.id;
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", task.id);
+    row.classList.add("reordering");
+  });
+
+  handle.addEventListener("dragend", () => {
+    draggingTaskId = "";
+    document.querySelectorAll(".gantt-row").forEach((item) => {
+      item.classList.remove("reordering", "drop-before", "drop-after");
+    });
+  });
+
+  row.addEventListener("dragover", (event) => {
+    if (!draggingTaskId || draggingTaskId === task.id) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    const bounds = row.getBoundingClientRect();
+    const insertBefore = event.clientY < bounds.top + bounds.height / 2;
+    row.classList.toggle("drop-before", insertBefore);
+    row.classList.toggle("drop-after", !insertBefore);
+  });
+
+  row.addEventListener("dragleave", (event) => {
+    if (!row.contains(event.relatedTarget)) {
+      row.classList.remove("drop-before", "drop-after");
+    }
+  });
+
+  row.addEventListener("drop", (event) => {
+    if (!draggingTaskId || draggingTaskId === task.id) return;
+    event.preventDefault();
+    const bounds = row.getBoundingClientRect();
+    const insertBefore = event.clientY < bounds.top + bounds.height / 2;
+    reorderTask(draggingTaskId, task.id, insertBefore);
+  });
+}
+
+function reorderTask(draggedTaskId, targetTaskId, insertBefore) {
+  const project = currentProject();
+  const sourceIndex = project.tasks.findIndex((task) => task.id === draggedTaskId);
+  const targetIndex = project.tasks.findIndex((task) => task.id === targetTaskId);
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return;
+
+  const [task] = project.tasks.splice(sourceIndex, 1);
+  let insertionIndex = targetIndex + (insertBefore ? 0 : 1);
+  if (sourceIndex < insertionIndex) insertionIndex -= 1;
+  project.tasks.splice(insertionIndex, 0, task);
+  draggingTaskId = "";
+  renderDetail();
+  showToast("工程の順番を変更しました");
 }
 
 function bindTaskBarDrag(bar, task) {
@@ -1691,7 +1750,7 @@ function addTask(event) {
   const project = currentProject();
   const member = project.members[0];
   const start = formatDate(startDate);
-  project.tasks.push({
+  const task = {
     id: uid("task"),
     name: "新規工程",
     assigneeId: member?.id || "",
@@ -1700,8 +1759,13 @@ function addTask(event) {
     start,
     end: formatDate(addDays(parseDate(start), 4)),
     progress: 0
-  });
-  project.tasks.sort((a, b) => String(a.start).localeCompare(String(b.start)) || String(a.end).localeCompare(String(b.end)));
+  };
+  const insertionIndex = project.tasks.findIndex((item) => String(item.start).localeCompare(start) > 0);
+  if (insertionIndex === -1) {
+    project.tasks.push(task);
+  } else {
+    project.tasks.splice(insertionIndex, 0, task);
+  }
   reconcileProjectDates();
   refs.taskInsertDialog.close();
   renderDetail();
