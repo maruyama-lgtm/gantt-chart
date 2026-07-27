@@ -452,6 +452,19 @@ function sharedAuthToken() {
   return appState.session?.idToken || "";
 }
 
+function requireGoogleReauthentication() {
+  stopSharedPolling();
+  clearTimeout(sharedSyncTimer);
+  localSharedChangesPending = false;
+  lastKnownSharedUpdate = "";
+  appState.isAuthenticated = false;
+  appState.session = null;
+  appState.currentView = "login";
+  persistLocalState();
+  render();
+  showToast("Googleログインの有効期限が切れました。もう一度ログインしてください。");
+}
+
 function scheduleSharedSave() {
   if (sharedSyncDisabled || !appState.isAuthenticated || !sharedAuthToken()) return;
   clearTimeout(sharedSyncTimer);
@@ -473,17 +486,22 @@ async function saveSharedStateNow() {
     body: JSON.stringify({ state: serializableState() })
   });
 
+  const payload = await response.json().catch(() => ({}));
+
+  if (response.status === 401) {
+    requireGoogleReauthentication();
+    throw new Error("Googleログインをやり直してください");
+  }
+
   if (response.status === 503) {
     sharedSyncDisabled = true;
     throw new Error("共有ストレージが未設定です。Vercelの環境変数を設定すると共有できます。");
   }
 
   if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
     throw new Error(payload.error || "共有データを保存できませんでした");
   }
 
-  const payload = await response.json().catch(() => ({}));
   lastKnownSharedUpdate = payload.sharedUpdatedAt || lastKnownSharedUpdate;
   localSharedChangesPending = false;
   return true;
@@ -500,6 +518,13 @@ async function loadSharedState(options = {}) {
       }
     });
 
+    const payload = await response.json().catch(() => ({}));
+
+    if (response.status === 401) {
+      requireGoogleReauthentication();
+      throw new Error("Googleログインをやり直してください");
+    }
+
     if (response.status === 503) {
       sharedSyncDisabled = true;
       stopSharedPolling();
@@ -508,11 +533,9 @@ async function loadSharedState(options = {}) {
     }
 
     if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
       throw new Error(payload.error || "共有データを読み込めませんでした");
     }
 
-    const payload = await response.json();
     const sharedUpdatedAt = payload.state?.sharedUpdatedAt || "";
     const isNewer = sharedUpdatedAt && (!lastKnownSharedUpdate || sharedUpdatedAt > lastKnownSharedUpdate);
     if (payload.state && (!options.onlyIfNewer || isNewer)) {
@@ -899,6 +922,7 @@ async function handleGoogleCredential(response) {
     } catch (syncError) {
       showSharedSyncError(syncError.message || "共有データを読み込めませんでした");
     }
+    if (!appState.isAuthenticated || !sharedAuthToken()) return;
     appState.currentView = "dashboard";
     appState.selectedStatus = ["active", "completed", "scheduled"].includes(appState.selectedStatus)
       ? appState.selectedStatus
