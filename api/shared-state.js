@@ -136,6 +136,67 @@ function sanitizeState(input) {
   };
 }
 
+function publicProject(project) {
+  const members = Array.isArray(project?.members) ? project.members : [];
+  const roles = Array.isArray(project?.roles) ? project.roles : [];
+  const tasks = Array.isArray(project?.tasks) ? project.tasks : [];
+  const details = project?.project && typeof project.project === "object" ? project.project : {};
+  return {
+    id: String(project?.id || ""),
+    status: String(project?.status || "active"),
+    project: {
+      name: String(details.name || ""),
+      client: String(details.client || ""),
+      owner: String(details.owner || ""),
+      start: String(details.start || ""),
+      end: String(details.end || "")
+    },
+    roles: roles.map((role) => ({
+      id: String(role?.id || ""),
+      name: String(role?.name || ""),
+      color: String(role?.color || "#206b73")
+    })),
+    members: members.map((member) => ({
+      id: String(member?.id || ""),
+      name: String(member?.name || ""),
+      roleId: String(member?.roleId || "")
+    })),
+    tasks: tasks.map((task) => ({
+      id: String(task?.id || ""),
+      name: String(task?.name || ""),
+      assigneeId: String(task?.assigneeId || ""),
+      roleId: String(task?.roleId || ""),
+      start: String(task?.start || ""),
+      end: String(task?.end || ""),
+      progress: Number(task?.progress) || 0
+    })),
+    ballOwnerId: String(project?.ballOwnerId || ""),
+    currentWorkNote: String(project?.currentWorkNote || ""),
+    updatedAt: String(project?.updatedAt || "")
+  };
+}
+
+async function getPublicShare(request, response) {
+  const requestUrl = new URL(request.url, `https://${request.headers.host || "localhost"}`);
+  if (!requestUrl.searchParams.has("share")) return false;
+  const shareToken = String(requestUrl.searchParams.get("share") || "").trim();
+  if (!shareToken || shareToken.length < 32) {
+    sendJson(response, 404, { error: "共有リンクが見つからないか、無効になっています" });
+    return true;
+  }
+
+  const value = await redisCommand(["GET", STATE_KEY]);
+  const sharedState = value ? JSON.parse(value) : null;
+  const project = sharedState?.projects?.find((item) => item?.shareToken === shareToken);
+  if (!project) {
+    sendJson(response, 404, { error: "共有リンクが見つからないか、無効になっています" });
+    return true;
+  }
+
+  sendJson(response, 200, { project: publicProject(project) });
+  return true;
+}
+
 module.exports = async function handler(request, response) {
   if (request.method === "OPTIONS") {
     response.statusCode = 204;
@@ -149,6 +210,10 @@ module.exports = async function handler(request, response) {
   }
 
   try {
+    if (request.method === "GET" && await getPublicShare(request, response)) {
+      return;
+    }
+
     const user = await verifyGoogleToken(request);
 
     if (request.method === "GET") {

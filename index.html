@@ -8,6 +8,8 @@
     <script src="https://accounts.google.com/gsi/client?hl=ja" async defer></script>
   </head>
   <body>
+    <main id="publicView" class="public-view hidden" aria-live="polite"></main>
+
     <section id="loginView" class="login-view" aria-label="ログイン">
       <div id="loginForm" class="login-card">
         <div class="brand login-brand">
@@ -47,6 +49,7 @@
           <button id="exportButton" class="ghost" type="button">JSON出力</button>
           <button id="importButton" class="ghost" type="button">JSON読込</button>
           <button id="imageButton" class="ghost" type="button">画像保存</button>
+          <button id="shareButton" class="ghost" type="button">閲覧リンク</button>
           <button id="saveButton" class="primary" type="button">保存</button>
           <input id="importFile" type="file" accept="application/json,.json" hidden />
         </div>
@@ -263,6 +266,27 @@
         <div class="dialog-actions">
           <button id="taskInsertCancelButton" class="ghost" type="button">キャンセル</button>
           <button class="primary" type="submit">追加</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="shareDialog" class="share-dialog">
+      <form method="dialog">
+        <div class="dialog-head">
+          <div>
+            <h3>閲覧リンク</h3>
+            <p>リンクを知っている人は、ログインなしでこの工程表を閲覧できます。</p>
+          </div>
+          <button value="cancel" class="icon-button" type="submit" aria-label="閉じる">x</button>
+        </div>
+        <label class="share-link-field">
+          <span>読み取り専用リンク</span>
+          <input id="shareLinkInput" type="text" readonly aria-label="読み取り専用リンク" />
+        </label>
+        <div class="dialog-actions share-dialog-actions">
+          <button id="copyShareLinkButton" class="primary" type="button">リンクをコピー</button>
+          <button id="reissueShareLinkButton" class="secondary" type="button">リンクを再発行</button>
+          <button id="disableShareLinkButton" class="ghost danger-text" type="button">無効にする</button>
         </div>
       </form>
     </dialog>

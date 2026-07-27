@@ -5,6 +5,7 @@ const DEFAULT_COMPANY_DOMAINS = ["sooon-web.com"];
 const MASTER_EMAIL = "maruyama@sooon-web.com";
 const GOOGLE_CLIENT_ID = "913052066974-1sdbg5mrjl009h7vnnujcsgpgjinqae2.apps.googleusercontent.com";
 const SHARED_STATE_ENDPOINT = "/api/shared-state";
+const PUBLIC_SHARE_PARAM = "share";
 const SYNC_DEBOUNCE_MS = 800;
 const SHARED_POLL_MS = 5000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -49,6 +50,7 @@ const STATUS_LABELS = {
 const $ = (selector) => document.querySelector(selector);
 
 const refs = {
+  publicView: $("#publicView"),
   loginView: $("#loginView"),
   loginForm: $("#loginForm"),
   googleSignInButton: $("#googleSignInButton"),
@@ -101,6 +103,11 @@ const refs = {
   taskInsertForm: $("#taskInsertForm"),
   taskInsertDate: $("#taskInsertDate"),
   taskInsertCancelButton: $("#taskInsertCancelButton"),
+  shareDialog: $("#shareDialog"),
+  shareLinkInput: $("#shareLinkInput"),
+  copyShareLinkButton: $("#copyShareLinkButton"),
+  reissueShareLinkButton: $("#reissueShareLinkButton"),
+  disableShareLinkButton: $("#disableShareLinkButton"),
   toast: $("#toast")
 };
 
@@ -117,6 +124,7 @@ let localSharedChangesPending = false;
 let sharedRequestInFlight = false;
 let applyingSharedUpdate = false;
 let draggingTaskId = "";
+const publicShareToken = new URLSearchParams(window.location.search).get(PUBLIC_SHARE_PARAM);
 
 function todayString() {
   return formatDate(new Date());
@@ -266,6 +274,7 @@ function createProject(options = {}) {
     tasks,
     ballOwnerId: members[0].id,
     currentWorkNote: "",
+    shareToken: "",
     viewStart: start,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
@@ -290,6 +299,7 @@ function normalizeProject(input) {
     tasks: Array.isArray(input.tasks) ? input.tasks : [],
     ballOwnerId: input.ballOwnerId || "",
     currentWorkNote: String(input.currentWorkNote || input.ballOwnerNote || ""),
+    shareToken: String(input.shareToken || ""),
     pinned: Boolean(input.pinned),
     viewStart: input.viewStart || input.project?.start || todayString(),
     createdAt: input.createdAt || new Date().toISOString(),
@@ -581,6 +591,189 @@ function currentProject() {
   return project;
 }
 
+function createShareToken() {
+  const bytes = new Uint8Array(24);
+  window.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function shareUrl(project) {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set(PUBLIC_SHARE_PARAM, project.shareToken);
+  return url.toString();
+}
+
+async function persistShareChange() {
+  saveState();
+  try {
+    await saveSharedStateNow();
+    return true;
+  } catch (error) {
+    showToast(error.message || "閲覧リンクを共有ストレージへ保存できませんでした");
+    return false;
+  }
+}
+
+async function openShareDialog() {
+  const project = currentProject();
+  if (!project.shareToken) {
+    project.shareToken = createShareToken();
+    const saved = await persistShareChange();
+    if (!saved) {
+      project.shareToken = "";
+      persistLocalState();
+      return;
+    }
+  }
+  refs.shareLinkInput.value = shareUrl(project);
+  refs.shareDialog.showModal();
+}
+
+async function copyShareLink() {
+  const link = refs.shareLinkInput.value;
+  if (!link) return;
+  try {
+    await navigator.clipboard.writeText(link);
+  } catch (error) {
+    refs.shareLinkInput.select();
+    document.execCommand("copy");
+  }
+  showToast("閲覧リンクをコピーしました");
+}
+
+async function reissueShareLink() {
+  if (!confirm("現在の閲覧リンクは無効になります。新しいリンクを発行しますか？")) return;
+  const project = currentProject();
+  project.shareToken = createShareToken();
+  if (!await persistShareChange()) return;
+  refs.shareLinkInput.value = shareUrl(project);
+  showToast("新しい閲覧リンクを発行しました");
+}
+
+async function disableShareLink() {
+  if (!confirm("この工程表の閲覧リンクを無効にしますか？")) return;
+  const project = currentProject();
+  project.shareToken = "";
+  if (!await persistShareChange()) return;
+  refs.shareDialog.close();
+  showToast("閲覧リンクを無効にしました");
+}
+
+async function renderPublicShare() {
+  refs.loginView.classList.add("hidden");
+  refs.appView.classList.add("hidden");
+  refs.publicView.classList.remove("hidden");
+  refs.publicView.innerHTML = `<section class="public-state"><p>工程表を読み込んでいます。</p></section>`;
+
+  try {
+    const response = await fetch(`${SHARED_STATE_ENDPOINT}?${PUBLIC_SHARE_PARAM}=${encodeURIComponent(publicShareToken)}`);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.project) {
+      throw new Error(payload.error || "閲覧リンクを読み込めませんでした");
+    }
+    renderPublicProject(normalizeProject(payload.project));
+  } catch (error) {
+    refs.publicView.innerHTML = `
+      <section class="public-state">
+        <div class="brand">
+          <span class="brand-mark">P</span>
+          <div><p>Production Planner</p><h1>閲覧できません</h1></div>
+        </div>
+        <p>${escapeHtml(error.message || "閲覧リンクが無効か、共有ストレージへ接続できません。")}</p>
+      </section>
+    `;
+  }
+}
+
+function renderPublicProject(project) {
+  const completed = project.tasks.filter((task) => Number(task.progress) >= 100).length;
+  const duration = project.project.start && project.project.end ? dateDiff(project.project.start, project.project.end) + 1 : 0;
+  const ballOwner = projectMember(project, project.ballOwnerId);
+  const updatedAt = project.updatedAt ? new Date(project.updatedAt).toLocaleString("ja-JP") : "-";
+  document.title = `${project.project.client || project.project.name || APP_TITLE} | ${APP_TITLE}`;
+  refs.publicView.innerHTML = `
+    <header class="public-header">
+      <div class="brand">
+        <span class="brand-mark">P</span>
+        <div><p>Production Planner</p><h1>案件管理　工程表</h1></div>
+      </div>
+      <span class="public-badge">閲覧専用</span>
+    </header>
+    <section class="public-summary">
+      <div>
+        <p class="public-eyebrow">${escapeHtml(STATUS_LABELS[project.status]?.title || "工程表")}</p>
+        <h2>${escapeHtml(project.project.client || "未設定の顧客")}</h2>
+        <p class="public-project-name">${escapeHtml(project.project.name || "未設定の工程表")}</p>
+        <p class="public-owner">代表担当者: ${escapeHtml(project.project.owner || "-")}</p>
+      </div>
+      <div class="public-metrics">
+        <article><span>制作期間</span><strong>${duration > 0 ? `${duration}日` : "-"}</strong></article>
+        <article><span>進捗</span><strong>${averageProgress(project)}%</strong></article>
+        <article><span>完了工程</span><strong>${completed} / ${project.tasks.length}</strong></article>
+      </div>
+    </section>
+    <section class="panel public-chart-panel">
+      <div class="public-chart-title">
+        <div><h2>ガントチャート</h2><p>現在作業: ${escapeHtml(ballOwner?.name || "-")} / ${escapeHtml(project.currentWorkNote || "-")}</p></div>
+        <span>最終更新: ${escapeHtml(updatedAt)}</span>
+      </div>
+      <div class="chart-scroll"><div id="publicGanttChart" class="gantt-chart public-gantt" aria-label="公開工程表"></div></div>
+    </section>
+  `;
+  renderPublicGantt($("#publicGanttChart"), project);
+}
+
+function renderPublicGantt(chart, project) {
+  const { start, end } = fullScheduleRange(project);
+  const days = Array.from({ length: dateDiff(formatDate(start), formatDate(end)) + 1 }, (_, index) => addDays(start, index));
+  const roleById = new Map(project.roles.map((role) => [role.id, role]));
+  chart.style.setProperty("--timeline-days", String(days.length));
+  chart.style.setProperty("--timeline-width", `${days.length * DAY_WIDTH}px`);
+
+  const header = document.createElement("div");
+  header.className = "gantt-header";
+  header.innerHTML = `<div class="corner">工程名</div><div class="meta-head">担当 / 進捗</div>`;
+  days.forEach((day) => {
+    const cell = document.createElement("div");
+    cell.className = `day-head ${dayClass(day)}`;
+    cell.innerHTML = `<span>${day.getMonth() + 1}/${day.getDate()}</span><small>${weekday(day)}</small>`;
+    header.append(cell);
+  });
+  chart.append(header);
+
+  project.tasks.forEach((task) => {
+    const member = projectMember(project, task.assigneeId);
+    const role = roleById.get(task.roleId) || roleById.get(member?.roleId) || { color: "#5d6470" };
+    const progress = Number(task.progress) || 0;
+    const row = document.createElement("div");
+    row.className = "gantt-row";
+    row.innerHTML = `
+      <div class="task-name public-task-name">${escapeHtml(task.name)}</div>
+      <div class="task-meta public-task-meta">${escapeHtml(member?.name || "未設定")} / ${escapeHtml(progressLabel(progress))}</div>
+    `;
+    days.forEach((day) => {
+      const cell = document.createElement("div");
+      cell.className = `day-cell ${dayClass(day)}`;
+      row.append(cell);
+    });
+    const position = barPosition(task, days[0], days[days.length - 1]);
+    if (position) {
+      const layer = document.createElement("div");
+      layer.className = "bar-layer";
+      const bar = document.createElement("div");
+      bar.className = `task-bar public-task-bar ${progress >= 45 ? "is-filled" : ""}`;
+      bar.style.gridColumn = `${position.start + 3} / ${position.end + 3}`;
+      bar.style.background = tintColor(role.color, 0.82);
+      bar.innerHTML = `<div class="task-bar-fill" style="width:${progress}%; background:${escapeAttr(role.color)}"></div><span>${escapeHtml(task.name)} ${escapeHtml(progressLabel(progress))}</span>`;
+      layer.append(bar);
+      row.append(layer);
+    }
+    chart.append(row);
+  });
+}
+
 function renderGoogleLogin() {
   const settings = normalizeSettings(appState.settings);
   appState.settings = settings;
@@ -782,6 +975,7 @@ function bindEvents() {
   $("#exportButton").addEventListener("click", exportJson);
   $("#importButton").addEventListener("click", () => refs.importFile.click());
   $("#imageButton").addEventListener("click", exportImage);
+  $("#shareButton").addEventListener("click", openShareDialog);
   refs.projectReportButton.addEventListener("click", openProjectReportGmail);
   refs.ballOwner.addEventListener("change", () => {
     currentProject().ballOwnerId = refs.ballOwner.value;
@@ -804,6 +998,9 @@ function bindEvents() {
   $("#applyColorButton").addEventListener("click", applyRoleColor);
   refs.taskInsertForm.addEventListener("submit", addTask);
   refs.taskInsertCancelButton.addEventListener("click", () => refs.taskInsertDialog.close());
+  refs.copyShareLinkButton.addEventListener("click", copyShareLink);
+  refs.reissueShareLinkButton.addEventListener("click", reissueShareLink);
+  refs.disableShareLinkButton.addEventListener("click", disableShareLink);
 
   refs.colorChoices.addEventListener("click", (event) => {
     const button = event.target.closest("[data-color]");
@@ -1648,6 +1845,7 @@ function duplicateProject(projectId) {
   copy.createdAt = new Date().toISOString();
   copy.updatedAt = new Date().toISOString();
   copy.pinned = false;
+  copy.shareToken = "";
   copy.roles.forEach((role) => {
     const oldId = role.id;
     role.id = uid("role");
@@ -2051,6 +2249,10 @@ function escapeAttr(value) {
   return escapeHtml(value);
 }
 
-loadState();
-bindEvents();
-render();
+if (publicShareToken) {
+  renderPublicShare();
+} else {
+  loadState();
+  bindEvents();
+  render();
+}
